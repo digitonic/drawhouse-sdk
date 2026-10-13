@@ -1,0 +1,22 @@
+{
+    "endpoint": "GET /v2/affiliates/reports?interval=days&start=2026-01-14&end=2026-01-14",
+    "request": "GET /v2/affiliates/reports",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": [
+            {
+                "id": 9001,
+                "registrations": 1250,
+                "internalMarketable": 610,
+                "externalMarketable": 480,
+                "played": 870,
+                "active": 215,
+                "uniqueVisitors": 18400,
+                "pageViews": 52100,
+                "startAt": "2026-01-14T00:00:00Z"
+            }
+        ]
+    }
+}

@@ -1,0 +1,68 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Digitonic\DrawHouse;
+
+use Digitonic\DrawHouse\Auth\TokenStore;
+use Digitonic\DrawHouse\Console\FixturesCommand;
+use Digitonic\DrawHouse\Console\SmokeTestCommand;
+use Digitonic\DrawHouse\Http\DrawHouseConnector;
+use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\ServiceProvider;
+
+final class DrawHouseServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->mergeConfigFrom(__DIR__.'/../config/drawhouse.php', 'drawhouse');
+
+        $this->app->singleton(DrawHouseConnector::class, function (Application $app): DrawHouseConnector {
+            $config = $app['config']->get('drawhouse');
+
+            return new DrawHouseConnector(
+                baseUrl: (string) $config['base_url'],
+                timeout: (int) ($config['timeout'] ?? 30),
+            );
+        });
+
+        $this->app->singleton(TokenStore::class, function (Application $app): TokenStore {
+            $config = $app['config']->get('drawhouse.cache', []);
+
+            return new TokenStore(
+                cache: $app->make(CacheFactory::class)->store($config['store'] ?? null),
+                prefix: (string) ($config['prefix'] ?? 'drawhouse'),
+                accessTokenTtl: (int) ($config['access_token_ttl'] ?? 3300),
+                refreshTokenTtl: (int) ($config['refresh_token_ttl'] ?? 2592000),
+                expiryBuffer: (int) ($config['expiry_buffer'] ?? 30),
+            );
+        });
+
+        $this->app->singleton(DrawHouse::class, function (Application $app): DrawHouse {
+            $config = $app['config']->get('drawhouse');
+
+            return new DrawHouse(
+                connector: $app->make(DrawHouseConnector::class),
+                tokens: $app->make(TokenStore::class),
+                email: (string) ($config['email'] ?? ''),
+                password: (string) ($config['password'] ?? ''),
+                affiliateId: isset($config['affiliate_id']) && $config['affiliate_id'] !== '' ? (int) $config['affiliate_id'] : null,
+            );
+        });
+
+        $this->app->alias(DrawHouse::class, 'drawhouse');
+    }
+
+    public function boot(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__.'/../config/drawhouse.php' => $this->app->configPath('drawhouse.php'),
+            ], 'drawhouse-config');
+
+            // Opt-in only: never scheduled, never run by tests.
+            $this->commands([SmokeTestCommand::class, FixturesCommand::class]);
+        }
+    }
+}

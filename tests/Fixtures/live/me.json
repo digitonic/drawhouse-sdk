@@ -1,0 +1,24 @@
+{
+    "endpoint": "GET /v2/partners/me",
+    "request": "GET /v2/partners/me",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": {
+            "playerId": 0,
+            "email": "[redacted]",
+            "firstName": "[redacted]",
+            "lastName": "[redacted]",
+            "companyName": "[redacted]",
+            "status": "LIVE",
+            "affiliateId": 0,
+            "pooledRevShare": 0,
+            "ringFencedRevShare": 0,
+            "minimumGuaranteedIncome": 0,
+            "crmInScope": true,
+            "invitedAt": "2025-11-03T10:00:00.123456Z",
+            "updatedAt": "2025-12-01T09:30:00.654321Z"
+        }
+    }
+}

@@ -1,0 +1,22 @@
+/vendor/
+/.phpunit.cache/
+/.phpunit.result.cache
+composer.lock
+
+# Editors & IDEs
+/.idea/
+/.vscode/
+/.fleet/
+/.zed/
+/.nova/
+/.cursor/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+{
+    "endpoint": "GET /v2/players/balances",
+    "request": "GET /v2/players/balances",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": {
+            "cashBalance": 42.5,
+            "siteCreditBalance": 7.25,
+            "vaultKeyBalance": 3
+        }
+    }
+}

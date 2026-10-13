@@ -1,0 +1,53 @@
+{
+    "name": "digitonic/drawhouse-sdk",
+    "description": "Thin Laravel client for the DrawHouse Partner API, built on Saloon.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["drawhouse", "raffletown", "laravel", "saloon", "sdk"],
+    "require": {
+        "php": "^8.2",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "nesbot/carbon": "^2.72|^3.0",
+        "saloonphp/laravel-plugin": "^4.0",
+        "saloonphp/saloon": "^4.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Digitonic\\DrawHouse\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Digitonic\\DrawHouse\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Digitonic\\DrawHouse\\DrawHouseServiceProvider"
+            ],
+            "aliases": {
+                "DrawHouse": "Digitonic\\DrawHouse\\Facades\\DrawHouse"
+            }
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "lint": "vendor/bin/pint"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

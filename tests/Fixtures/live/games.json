@@ -1,0 +1,135 @@
+{
+    "endpoint": "GET /v2/partners/charity-raffles/games?affiliateId={affiliateId}&limit=2",
+    "request": "GET /v2/partners/charity-raffles/games",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": {
+            "games": [
+                {
+                    "id": 201,
+                    "name": "Sample Free Cash Draw",
+                    "state": "INPROGRESS",
+                    "isParticipating": true,
+                    "editions": [
+                        {
+                            "id": 301,
+                            "affiliateId": 0,
+                            "name": "Sample Free Cash Draw",
+                            "slug": "sample-free-cash-draw",
+                            "isDefault": true,
+                            "isMine": true
+                        }
+                    ],
+                    "fields": {
+                        "raffleEntryType": "DRAW_ONLY",
+                        "revealMechanic": "SCAN",
+                        "hasCashPrize": "true",
+                        "maxTickets": "100000",
+                        "maxTicketsPerPlayer": "1",
+                        "defaultCheckoutTicketCount": "1",
+                        "entriesCount": "0",
+                        "scheduledDrawTime": "2026-02-28T21:00:00.000Z",
+                        "rafflePrizePercentage": "50",
+                        "physicalToCashPercentage": "80",
+                        "physicalToSiteCreditPercentage": "100",
+                        "cashToSiteCreditPercentage": "110",
+                        "isRingFenced": "true"
+                    },
+                    "rounds": [
+                        {
+                            "id": 1201,
+                            "roundNumber": 1,
+                            "state": "OPEN",
+                            "ticketPrice": "0.00",
+                            "schedule": {
+                                "opensAt": "2026-01-05T12:00:00.000000Z",
+                                "drawAt": "2026-02-28T20:45:00Z"
+                            },
+                            "nextTransition": {
+                                "toState": "RESULTED",
+                                "scheduledAt": "2026-02-28T20:45:00Z"
+                            },
+                            "prizes": [
+                                {
+                                    "name": "\u00a3500 Cash",
+                                    "type": "DRAW",
+                                    "amount": 500,
+                                    "category": "CASH",
+                                    "totalAvailable": 1,
+                                    "soldCount": 0
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "id": 202,
+                    "name": "Sample Gadget Draw",
+                    "state": "INPROGRESS",
+                    "isParticipating": true,
+                    "editions": [
+                        {
+                            "id": 302,
+                            "affiliateId": 0,
+                            "name": "Sample Gadget Draw",
+                            "slug": "sample-gadget-draw",
+                            "isDefault": true,
+                            "isMine": true
+                        },
+                        {
+                            "id": 303,
+                            "affiliateId": 0,
+                            "name": "Sample Gadget Draw",
+                            "slug": "sample-gadget-draw-2",
+                            "isDefault": true,
+                            "isMine": false
+                        }
+                    ],
+                    "fields": {
+                        "raffleEntryType": "DRAW_ONLY",
+                        "revealMechanic": "SCAN",
+                        "hasCashPrize": "false",
+                        "maxTickets": "20000",
+                        "maxTicketsPerPlayer": "20000",
+                        "defaultCheckoutTicketCount": "10",
+                        "entriesCount": "0",
+                        "scheduledDrawTime": "2026-02-14T20:00:00.000Z",
+                        "rafflePrizePercentage": "50",
+                        "physicalToCashPercentage": "80",
+                        "physicalToSiteCreditPercentage": "100",
+                        "cashToSiteCreditPercentage": "110",
+                        "isRingFenced": "false"
+                    },
+                    "rounds": [
+                        {
+                            "id": 1202,
+                            "roundNumber": 1,
+                            "state": "OPEN",
+                            "ticketPrice": "0.10",
+                            "schedule": {
+                                "opensAt": "2026-01-05T12:00:00.000000Z",
+                                "drawAt": "2026-02-14T19:45:00Z"
+                            },
+                            "nextTransition": {
+                                "toState": "RESULTED",
+                                "scheduledAt": "2026-02-14T19:45:00Z"
+                            },
+                            "prizes": [
+                                {
+                                    "name": "Games console",
+                                    "type": "DRAW",
+                                    "amount": 450,
+                                    "category": "PHYSICAL",
+                                    "totalAvailable": 1,
+                                    "soldCount": 0
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}

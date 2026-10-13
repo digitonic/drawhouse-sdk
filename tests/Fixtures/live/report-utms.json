@@ -1,0 +1,25 @@
+{
+    "endpoint": "GET /v2/affiliates/reports/9001/utms",
+    "request": "GET /v2/affiliates/reports/9001/utms",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": [
+            {
+                "source": "default",
+                "medium": "default",
+                "campaign": "default",
+                "count": 40,
+                "registered": 12
+            },
+            {
+                "source": "newsletter",
+                "medium": "email",
+                "campaign": "january-draw",
+                "count": 85,
+                "registered": 31
+            }
+        ]
+    }
+}

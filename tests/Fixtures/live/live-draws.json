@@ -1,0 +1,149 @@
+{
+    "endpoint": "GET /v2/partners/charity-raffles/live?affiliateId={affiliateId}&limit=2",
+    "request": "GET /v2/partners/charity-raffles/live",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": {
+            "draws": [
+                {
+                    "gameId": 210,
+                    "gameName": "Sample Instant Win",
+                    "roundId": 1210,
+                    "roundState": "OPEN",
+                    "entryType": "INSTANT_ONLY",
+                    "edition": {
+                        "id": 310,
+                        "name": "Sample Instant Win",
+                        "slug": "sample-instant-win",
+                        "url": "/prize-draw/sample-instant-win"
+                    },
+                    "images": {
+                        "lobby-card": {
+                            "base": "https://images.example.com/games/sample-instant-win.jpg"
+                        },
+                        "promo": {
+                            "base": "https://images.example.com/games/sample-instant-win-promo.jpg"
+                        }
+                    },
+                    "tickets": {
+                        "price": "0.50",
+                        "max": 10000,
+                        "sold": 2480,
+                        "available": 7520,
+                        "maxPerPlayer": 10000
+                    },
+                    "schedule": {
+                        "opensAt": "2026-01-05T12:00:00.000000Z",
+                        "drawAt": "2026-02-28T21:00:00Z"
+                    },
+                    "nextTransition": {
+                        "toState": "RESULTED",
+                        "scheduledAt": "2026-02-28T21:00:00Z"
+                    },
+                    "scheduledDrawTime": "2026-02-28T21:00:00.000Z",
+                    "prizes": [
+                        {
+                            "prizePoolId": 401,
+                            "name": "50p Credit",
+                            "type": "INSTANT",
+                            "category": "SITE_CREDIT",
+                            "amount": 0.5,
+                            "totalAvailable": 800,
+                            "displayOrder": 3
+                        },
+                        {
+                            "prizePoolId": 402,
+                            "name": "\u00a32 Cash",
+                            "type": "INSTANT",
+                            "category": "CASH",
+                            "amount": 2,
+                            "totalAvailable": 200,
+                            "displayOrder": 2
+                        },
+                        {
+                            "prizePoolId": 403,
+                            "name": "Wireless headphones",
+                            "type": "INSTANT",
+                            "category": "PHYSICAL",
+                            "amount": 150,
+                            "imageUrl": "https://images.example.com/prizes/403.png",
+                            "totalAvailable": 2,
+                            "displayOrder": 1
+                        }
+                    ],
+                    "asOf": "2026-01-15T06:00:00.123456789Z"
+                },
+                {
+                    "gameId": 211,
+                    "gameName": "Sample Prize Grab",
+                    "roundId": 1211,
+                    "roundState": "OPEN",
+                    "entryType": "INSTANT_ONLY",
+                    "edition": {
+                        "id": 311,
+                        "name": "Sample Prize Grab",
+                        "slug": "sample-prize-grab",
+                        "url": "/prize-draw/sample-prize-grab"
+                    },
+                    "images": {
+                        "lobby-card": {
+                            "base": "https://images.example.com/games/sample-prize-grab.jpg"
+                        },
+                        "promo": {
+                            "base": "https://images.example.com/games/sample-prize-grab-promo.jpg"
+                        }
+                    },
+                    "tickets": {
+                        "price": "1.00",
+                        "max": 5000,
+                        "sold": 1320,
+                        "available": 3680,
+                        "maxPerPlayer": 5000
+                    },
+                    "schedule": {
+                        "opensAt": "2026-01-05T12:00:00.000000Z",
+                        "drawAt": "2026-02-28T21:00:00Z"
+                    },
+                    "nextTransition": {
+                        "toState": "RESULTED",
+                        "scheduledAt": "2026-02-28T21:00:00Z"
+                    },
+                    "scheduledDrawTime": "2026-02-28T21:00:00.000Z",
+                    "prizes": [
+                        {
+                            "prizePoolId": 411,
+                            "name": "\u00a31 Credit",
+                            "type": "INSTANT",
+                            "category": "SITE_CREDIT",
+                            "amount": 1,
+                            "totalAvailable": 500,
+                            "displayOrder": 3
+                        },
+                        {
+                            "prizePoolId": 412,
+                            "name": "\u00a35 Cash",
+                            "type": "INSTANT",
+                            "category": "CASH",
+                            "amount": 5,
+                            "totalAvailable": 100,
+                            "displayOrder": 2
+                        },
+                        {
+                            "prizePoolId": 413,
+                            "name": "Smart watch",
+                            "type": "INSTANT",
+                            "category": "PHYSICAL",
+                            "amount": 250,
+                            "imageUrl": "https://images.example.com/prizes/413.png",
+                            "totalAvailable": 1,
+                            "displayOrder": 1
+                        }
+                    ],
+                    "asOf": "2026-01-15T06:00:00.123456789Z"
+                }
+            ]
+        }
+    }
+}

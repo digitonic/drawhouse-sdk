@@ -1,0 +1,33 @@
+{
+    "endpoint": "GET /v2/games/tickets?gameId=210",
+    "request": "GET /v2/games/tickets",
+    "recordedAt": "2026-01-15T06:00:00Z",
+    "status": 200,
+    "body": {
+        "errorCode": 0,
+        "data": {
+            "tickets": [
+                {
+                    "id": 700001,
+                    "playerId": 0,
+                    "price": 0.5,
+                    "paymentStatus": "SUCCEEDED",
+                    "createdAt": "2026-01-14T19:02:11.000000Z",
+                    "utmSource": "newsletter",
+                    "utmMedium": "email",
+                    "utmCampaign": "january-draw"
+                },
+                {
+                    "id": 700002,
+                    "playerId": 0,
+                    "price": 0.45,
+                    "paymentStatus": "SUCCEEDED",
+                    "createdAt": "2026-01-14T20:15:40.000000Z",
+                    "utmSource": "",
+                    "utmMedium": "",
+                    "utmCampaign": ""
+                }
+            ]
+        }
+    }
+}
