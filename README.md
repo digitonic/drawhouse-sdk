@@ -372,7 +372,7 @@ if ($player = $event->player()) {                     // PlayerData, for player.
 
 - **Respond fast.** Any `2xx` within 5 seconds counts as delivered; anything else is retried, up to 8 attempts, after which the delivery is `DEAD` and never resent. 50 failures in a row switch the endpoint off. Store the event and process it on a queue, and keep a polling job as a backstop.
 - **Rotating a secret.** Call `rotateWebhookSecret()`, then verify with both the new and the old secret until requests verify with the new one. `verify()` returns the index of the secret that matched (`0` = the first you passed), which tells you when the old one can go.
-- **Timestamp tolerance.** The signature's `t` must be within `tolerance` seconds of now in either direction: 300 (5 minutes) by default, `null` to disable. It is checked before the signature.
+- **Timestamp tolerance.** The signature's `t` must be within `tolerance` seconds of now in either direction: 300 (5 minutes) by default, `null` to disable (`DRAWHOUSE_WEBHOOK_TOLERANCE=null` works too). It is checked before the signature.
 - `$verifier->verify($body, $header)` checks without parsing, and `isValid()` returns a bool. `WebhookEvent::fromJson($body)` parses a body you have already verified.
 - In your own tests, `WebhookVerifier::signatureHeader($body, $secret)` builds the header DrawHouse would send.
 

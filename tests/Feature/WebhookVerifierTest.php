@@ -379,3 +379,53 @@ it('needs no webhook secret until the verifier is resolved', function () {
     expect(app('drawhouse'))->not->toBeNull()
         ->and(fn () => app(WebhookVerifier::class))->toThrow(InvalidArgumentException::class, 'DRAWHOUSE_WEBHOOK_SECRET');
 });
+
+/**
+ * Evaluate config/drawhouse.php with DRAWHOUSE_WEBHOOK_TOLERANCE set as it
+ * would be in a .env file, and load its webhooks section.
+ */
+function webhookConfigFromEnv(?string $tolerance): void
+{
+    $key = 'DRAWHOUSE_WEBHOOK_TOLERANCE';
+
+    if ($tolerance !== null) {
+        $_SERVER[$key] = $_ENV[$key] = $tolerance;
+    }
+
+    try {
+        $config = require __DIR__.'/../../config/drawhouse.php';
+    } finally {
+        unset($_SERVER[$key], $_ENV[$key]);
+    }
+
+    config()->set('drawhouse.webhooks', ['secret' => webhookSecret()] + $config['webhooks']);
+}
+
+it('reads the tolerance from the environment, keeping null as "no check"', function (?string $env, ?int $expected) {
+    webhookConfigFromEnv($env);
+
+    $verifier = app(WebhookVerifier::class);
+    $body = webhookBody(pingEventFixture());
+    $header = drawhouseSignature($body, webhookSecret());
+
+    if ($expected === null) {
+        expect($verifier->isValid($body, $header, signedAt()->addYear()))->toBeTrue();
+
+        return;
+    }
+
+    expect($verifier->isValid($body, $header, signedAt()->addSeconds($expected)))->toBeTrue()
+        ->and($verifier->isValid($body, $header, signedAt()->addSeconds($expected + 1)))->toBeFalse();
+})->with([
+    'unset' => [null, 300],
+    'blank' => ['', 300],
+    'seconds' => ['60', 60],
+    'null' => ['null', null],
+    '(null)' => ['(null)', null],
+]);
+
+it('refuses a tolerance that is not a whole number of seconds', function (string $env) {
+    webhookConfigFromEnv($env);
+
+    expect(fn () => app(WebhookVerifier::class))->toThrow(InvalidArgumentException::class, 'whole number of seconds');
+})->with(['five minutes', '-1', '1.5']);

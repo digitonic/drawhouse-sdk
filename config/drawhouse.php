@@ -55,13 +55,15 @@ return [
     | finishes, then clear it.
     |
     | `tolerance` is how far, in seconds, a signature's timestamp may be from
-    | now in either direction. Set it to null to disable the check.
+    | now in either direction. Set it (or DRAWHOUSE_WEBHOOK_TOLERANCE) to null
+    | to disable the check; left blank it defaults to 300. Not cast here, so
+    | that null survives.
     |
     */
     'webhooks' => [
         'secret' => env('DRAWHOUSE_WEBHOOK_SECRET'),
         'previous_secret' => env('DRAWHOUSE_WEBHOOK_PREVIOUS_SECRET'),
-        'tolerance' => (int) env('DRAWHOUSE_WEBHOOK_TOLERANCE', 300),
+        'tolerance' => env('DRAWHOUSE_WEBHOOK_TOLERANCE', 300),
     ],
 
     /*

@@ -13,6 +13,7 @@ use Digitonic\DrawHouse\Webhooks\WebhookVerifier;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
 
 final class DrawHouseServiceProvider extends ServiceProvider
 {
@@ -62,11 +63,46 @@ final class DrawHouseServiceProvider extends ServiceProvider
 
             return new WebhookVerifier(
                 secrets: [(string) ($config['secret'] ?? ''), (string) ($config['previous_secret'] ?? '')],
-                tolerance: array_key_exists('tolerance', $config) && $config['tolerance'] === null
-                    ? null
-                    : (int) ($config['tolerance'] ?? WebhookVerifier::DEFAULT_TOLERANCE),
+                tolerance: self::webhookTolerance($config),
             );
         });
+    }
+
+    /**
+     * `drawhouse.webhooks.tolerance`: null (including DRAWHOUSE_WEBHOOK_TOLERANCE=null)
+     * disables the timestamp check, a missing or blank value means the default,
+     * and anything else must be a whole number of seconds.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function webhookTolerance(array $config): ?int
+    {
+        if (! array_key_exists('tolerance', $config)) {
+            return WebhookVerifier::DEFAULT_TOLERANCE;
+        }
+
+        $tolerance = $config['tolerance'];
+
+        if ($tolerance === null) {
+            return null;
+        }
+
+        if (is_string($tolerance)) {
+            $tolerance = trim($tolerance);
+
+            if ($tolerance === '') {
+                return WebhookVerifier::DEFAULT_TOLERANCE;
+            }
+        }
+
+        if (is_int($tolerance) || (is_string($tolerance) && ctype_digit($tolerance))) {
+            return (int) $tolerance;
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            'DrawHouse webhook tolerance must be a whole number of seconds or null, %s given',
+            is_scalar($tolerance) ? var_export($tolerance, true) : get_debug_type($tolerance),
+        ));
     }
 
     public function boot(): void
