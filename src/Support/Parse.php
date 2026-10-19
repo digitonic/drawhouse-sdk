@@ -133,13 +133,18 @@ final class Parse
             return $value;
         }
 
-        if (! is_string($value) && ! is_int($value)) {
+        if (is_int($value)) {
+            return $enum::tryFrom($value);
+        }
+
+        if (! is_string($value)) {
             return null;
         }
 
-        $needle = is_string($value) ? strtoupper(str_replace(['-', ' '], '_', trim($value))) : $value;
-
-        return $enum::tryFrom($needle);
+        // The exact value first, for the lowercase enums (`round.state_changed`,
+        // `status`), then the upper-snake form the state enums use.
+        return $enum::tryFrom(trim($value))
+            ?? $enum::tryFrom(strtoupper(str_replace(['-', ' '], '_', trim($value))));
     }
 
     /**

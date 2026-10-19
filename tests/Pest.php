@@ -431,3 +431,172 @@ function sentQueryString(MockClient $mock, int $index): string
 {
     return $mock->getRecordedResponses()[$index]->getPsrRequest()->getUri()->getQuery();
 }
+
+// ---------------------------------------------------------------------------
+// Webhooks
+// ---------------------------------------------------------------------------
+
+/**
+ * A fake signing secret: `whsec_` plus 64 hex characters.
+ */
+function webhookSecret(string $seed = 'current'): string
+{
+    return 'whsec_'.hash('sha256', $seed);
+}
+
+/**
+ * One WebhookEndpoint.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function webhookEndpointFixture(int $id = 7, array $overrides = []): array
+{
+    return array_replace([
+        'id' => $id,
+        'url' => 'https://hooks.example.com/drawhouse',
+        'events' => ['round.state_changed'],
+        'active' => true,
+        'description' => 'test receiver',
+        'consecutiveFailures' => 0,
+        'lastSuccessAt' => '2026-10-07T14:03:14Z',
+        'lastFailureAt' => null,
+        'createdAt' => '2026-10-01T09:00:00Z',
+        'updatedAt' => '2026-10-07T14:03:14Z',
+    ], $overrides);
+}
+
+/**
+ * One row of the delivery log.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function webhookDeliveryFixture(int $id = 501, array $overrides = []): array
+{
+    return array_replace([
+        'id' => $id,
+        'eventId' => 1234,
+        'eventType' => 'round.state_changed',
+        'resource' => ['type' => 'round', 'id' => '88'],
+        'occurredAt' => '2026-10-07T14:03:11Z',
+        'endpointId' => 7,
+        'status' => 'PENDING',
+        'attempt' => 2,
+        'nextAttemptAt' => '2026-10-07T14:39:20Z',
+        'lastResponseCode' => 500,
+        'lastError' => 'http 500',
+        'deliveredAt' => null,
+        'createdAt' => '2026-10-07T14:03:11Z',
+        'updatedAt' => '2026-10-07T14:09:20Z',
+    ], $overrides);
+}
+
+/**
+ * A `round.state_changed` event body.
+ *
+ * @param  array<string, mixed>  $data
+ * @return array<string, mixed>
+ */
+function roundStateChangedEventFixture(array $data = []): array
+{
+    return [
+        'id' => 1234,
+        'type' => 'round.state_changed',
+        'occurredAt' => '2026-10-07T14:03:11Z',
+        'affiliateId' => 20,
+        'resource' => ['type' => 'round', 'id' => '88'],
+        'data' => array_replace([
+            'gameId' => 50,
+            'gameName' => 'October Prize Draw',
+            'roundId' => 88,
+            'roundNumber' => 3,
+            'fromState' => 'OPEN',
+            'toState' => 'RESULTED',
+            'editions' => [
+                ['id' => 9, 'slug' => 'acme-october-draw', 'name' => 'Acme October Draw', 'isDefault' => true, 'url' => 'https://acme.example/prize-draw/acme-october-draw'],
+            ],
+        ], $data),
+    ];
+}
+
+/**
+ * A `player.registered` or `player.updated` event body. No PII, as on the wire.
+ *
+ * @param  array<string, mixed>  $data
+ * @return array<string, mixed>
+ */
+function playerEventFixture(string $type = 'player.updated', array $data = []): array
+{
+    $payload = [
+        'playerId' => 18342,
+        'registeredAt' => '2026-10-07T14:59:40Z',
+        'accountStatus' => 'SELF_EXCLUDED',
+        'statusChangedAt' => '2026-10-08T09:12:03Z',
+        'marketable' => false,
+        'suppression' => [
+            'selfExcluded' => true,
+            'selfExclusionUntil' => '2027-04-08T09:12:03Z',
+            'selfExclusionForever' => false,
+            'gamstop' => false,
+            'timedOutUntil' => null,
+            'kycStatus' => 'VERIFIED',
+            'emailSuppressed' => false,
+        ],
+        'consents' => [
+            'email' => ['granted' => true, 'recordedAt' => '2026-10-07T14:59:40Z'],
+            'sms' => ['granted' => false, 'recordedAt' => null],
+            'partnerOffers' => ['granted' => true],
+        ],
+    ];
+
+    if ($type === 'player.updated') {
+        $payload['changes'] = ['status'];
+    }
+
+    return [
+        'id' => 2202,
+        'type' => $type,
+        'occurredAt' => '2026-10-08T09:12:03Z',
+        'affiliateId' => 20,
+        'resource' => ['type' => 'player', 'id' => '18342'],
+        'data' => array_replace_recursive($payload, $data),
+    ];
+}
+
+/**
+ * A `webhook.ping` event body, as the test route returns it.
+ *
+ * @return array<string, mixed>
+ */
+function pingEventFixture(int $endpointId = 7): array
+{
+    return [
+        'id' => 3001,
+        'type' => 'webhook.ping',
+        'occurredAt' => '2026-10-08T10:00:00Z',
+        'affiliateId' => 20,
+        'resource' => ['type' => 'webhook', 'id' => (string) $endpointId],
+        'data' => ['endpointId' => $endpointId, 'message' => 'ping'],
+    ];
+}
+
+/**
+ * The body DrawHouse would POST, encoded the way it goes on the wire.
+ *
+ * @param  array<string, mixed>  $event
+ */
+function webhookBody(array $event): string
+{
+    return json_encode($event, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+}
+
+/**
+ * The JSON body a request was sent with.
+ *
+ * @return array<string, mixed>
+ */
+function sentJsonBody(MockClient $mock, int $index): array
+{
+    return json_decode((string) $mock->getRecordedResponses()[$index]->getPsrRequest()->getBody(), true, 512, JSON_THROW_ON_ERROR);
+}

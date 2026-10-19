@@ -1,11 +1,12 @@
 # DrawHouse Partner API SDK
 
-A thin, dependency-light Laravel package that wraps the [DrawHouse](https://api.prod.raffletown.co.uk) Partner API one-to-one, built on [Saloon](https://docs.saloon.dev). Targets version **1.2** of the Partner API.
+A thin, dependency-light Laravel package that wraps the [DrawHouse](https://api.prod.raffletown.co.uk) Partner API one-to-one, built on [Saloon](https://docs.saloon.dev). Targets the October 2026 Partner API reference: version **1.2** plus partner webhooks.
 
 - One typed method per endpoint, every response a readonly DTO.
 - Transparent auth: login, cached tokens, `401 → refresh → retry`, re-login if the refresh fails (including a `422` refresh rejection).
 - The `{ errorCode, data }` envelope is unwrapped for you; failures throw a typed `DrawHouseException` subclass per the API's error table.
-- No database, migrations, scheduler or events. Persistence and sync belong in the consuming app.
+- Webhooks: endpoint management, typed event payloads and a stateless signature verifier.
+- No database, migrations, scheduler or events. Persistence, sync and webhook receiving belong in the consuming app.
 
 ## Installation
 
@@ -30,6 +31,10 @@ DRAWHOUSE_PASSWORD=secret
 DRAWHOUSE_AFFILIATE_ID=
 # Optional: cache store for tokens + affiliate id (defaults to the app default)
 DRAWHOUSE_CACHE_STORE=
+# Optional: only if you receive webhooks and resolve WebhookVerifier from the container
+DRAWHOUSE_WEBHOOK_SECRET=
+DRAWHOUSE_WEBHOOK_PREVIOUS_SECRET=
+DRAWHOUSE_WEBHOOK_TOLERANCE=300
 ```
 
 ## Usage
@@ -266,6 +271,123 @@ $balances->cashBalance; $balances->siteCreditBalance; $balances->vaultKeyBalance
 
 Rate guidance: no more than once every 15 minutes.
 
+### Webhooks
+
+DrawHouse push events to HTTPS endpoints you register. The SDK covers the stateless half: managing endpoints, verifying signatures and parsing events into DTOs. Receiving them (the route, storing and deduplicating events, queueing, acting on them) belongs in your application. The webhook routes take the affiliate from the token and need a `LIVE` partner, otherwise `PartnerNotLiveException`.
+
+#### Events
+
+| Type | Sent when | `data` |
+| --- | --- | --- |
+| `round.state_changed` | A round on one of your draws moves into `OPEN`, `RESULTED`, `LIVE_DRAW`, `COMPLETED` or `CANCELLED` (never `SETUP`, `READY`, `VOID`) | `RoundStateChangedData` |
+| `player.registered` | One of your players completes registration | `PlayerData` |
+| `player.updated` | A player's account status, consent or profile changes | `PlayerData` with `changes` |
+| `webhook.ping` | You call `testWebhook()`; cannot be subscribed to | `PingData` |
+
+#### Managing endpoints
+
+```php
+use Digitonic\DrawHouse\Enums\WebhookDeliveryStatus;
+use Digitonic\DrawHouse\Enums\WebhookEventType;
+
+// Register (at most 10 endpoints). The secret is returned HERE and on rotation only: store it now.
+$created = DrawHouse::createWebhook(                 // POST /v2/partners/webhooks → WebhookEndpointWithSecret
+    'https://hooks.example.com/drawhouse',           // absolute https:// URL on a public host
+    [WebhookEventType::ROUND_STATE_CHANGED, WebhookEventType::PLAYER_UPDATED],   // [] = every type
+    description: 'production receiver',             // optional, up to 255 characters
+);
+$created->secret;                                    // "whsec_…" — sign/verify with the whole string
+$created->endpoint->id;
+
+DrawHouse::webhooks();                               // GET /v2/partners/webhooks → list<WebhookEndpoint> (never the secret)
+$endpoint = DrawHouse::webhook($id);                 // GET /v2/partners/webhooks/{id} → WebhookEndpoint
+$endpoint->url; ->events; ->active; ->description; ->consecutiveFailures; ->lastSuccessAt; ->lastFailureAt;
+$endpoint->receives(WebhookEventType::PLAYER_UPDATED);
+$endpoint->wasAutoDisabled();                        // switched off by DrawHouse after 50 failures in a row
+
+// PATCH: only the arguments you pass are sent (at least one).
+DrawHouse::updateWebhook($id, active: false);
+DrawHouse::updateWebhook($id, url: 'https://hooks.example.com/v2', events: [], description: '');   // [] = every type, '' clears
+DrawHouse::updateWebhook($id, active: true);         // re-enable; resets the failure counter
+
+DrawHouse::deleteWebhook($id);                       // DELETE; queued deliveries go DEAD, the id is never reused
+
+$ping = DrawHouse::testWebhook($id);                 // POST …/{id}/test → the queued WebhookEvent (webhook.ping)
+$rotated = DrawHouse::rotateWebhookSecret($id);      // POST …/{id}/rotate-secret → WebhookEndpointWithSecret
+
+// Delivery log, oldest first: one page, or every page lazily.
+$page = DrawHouse::webhookDeliveriesPage($id, [WebhookDeliveryStatus::DEAD], createdAfter: now()->subDay(), limit: 100);
+$page->items; $page->nextCursor;
+DrawHouse::allWebhookDeliveries($id, [WebhookDeliveryStatus::DEAD])->each(function ($d) {
+    $d->eventId; $d->eventType; $d->status; $d->attempt; $d->nextAttemptAt; $d->lastResponseCode; $d->lastError; $d->deliveredAt;
+});
+```
+
+Client-side checks throw `InvalidArgumentException` before anything is sent: a URL that is not absolute `https://` (or has credentials or a fragment), `webhook.ping` in `events`, a description over 255 characters, or an `updateWebhook()` with nothing to change. Everything else the API rejects (a non-public host, an 11th endpoint) is an `InvalidRequestException`. A `503` on register or rotate means DrawHouse's secret storage was unavailable: nothing was created, or the old secret is still in force. It is a retryable `ServerException`, and the SDK never retries webhook writes for you.
+
+#### Receiving and verifying
+
+Every request carries `X-DrawHouse-Signature: t=<unix>,v1=<hex>`, where the signature is `HMAC-SHA256(secret, t + "." + rawBody)`, plus `X-DrawHouse-Event` (the type) and `X-DrawHouse-Delivery` (a delivery id that stays the same across retries). Verify against the **raw** body, before any JSON decoding:
+
+```php
+use Digitonic\DrawHouse\DTO\Webhooks\PlayerData;
+use Digitonic\DrawHouse\DTO\Webhooks\RoundStateChangedData;
+use Digitonic\DrawHouse\Enums\PlayerChange;
+use Digitonic\DrawHouse\Exceptions\WebhookVerificationException;
+use Digitonic\DrawHouse\Webhooks\WebhookVerifier;
+
+// From config (DRAWHOUSE_WEBHOOK_SECRET / _PREVIOUS_SECRET / _TOLERANCE)…
+$verifier = app(WebhookVerifier::class);
+// …or with secrets you hold elsewhere: current first, then the one being rotated out.
+$verifier = new WebhookVerifier([$secret, $previousSecret], tolerance: 300);
+
+try {
+    $event = $verifier->event($request->getContent(), $request->header(WebhookVerifier::SIGNATURE_HEADER));
+} catch (WebhookVerificationException $e) {
+    $e->reason;   // missing_signature | malformed_signature | timestamp_outside_tolerance | signature_mismatch | malformed_payload
+    abort(400);
+}
+
+$event->id;           // deduplicate on this: retries carry the same id
+$event->occurredAt;   // order on this, not on arrival
+$event->type;         // WebhookEventType (null for a type this SDK does not know; ->typeName has the wire value)
+$event->affiliateId; $event->resource->type; $event->resource->id;
+
+if ($round = $event->roundStateChanged()) {          // RoundStateChangedData
+    $round->gameId; $round->gameName; $round->roundId; $round->roundNumber;
+    $round->fromState; $round->toState;               // RoundState
+    $round->isResulted();                             // winners decided: pull them from the draw endpoints
+    $round->defaultEdition()?->url;                   // your player-facing page; ->editions lists all your active ones
+}
+
+if ($player = $event->player()) {                     // PlayerData, for player.registered and player.updated
+    $player->playerId; $player->accountStatus; $player->statusChangedAt; $player->marketable;
+    $player->suppression->gamstop; ->selfExcluded; ->timedOutUntil; ->emailSuppressed;   // the players-feed Suppression
+    $player->consents->email->granted; ->sms->granted; ->partnerOffers->granted;         // the players-feed Consents
+    $player->changes;                                 // list<PlayerChange>: STATUS, CONSENT, PROFILE (empty on registered)
+    $player->needsProfileRefetch();                   // PROFILE changed: the event has no PII, call DrawHouse::player($player->playerId)
+    $player->effectiveStatusAt(now());                // a time-out ending sends no event; evaluate it yourself
+}
+```
+
+- **Respond fast.** Any `2xx` within 5 seconds counts as delivered; anything else is retried, up to 8 attempts, after which the delivery is `DEAD` and never resent. 50 failures in a row switch the endpoint off. Store the event and process it on a queue, and keep a polling job as a backstop.
+- **Rotating a secret.** Call `rotateWebhookSecret()`, then verify with both the new and the old secret until requests verify with the new one. `verify()` returns the index of the secret that matched (`0` = the first you passed), which tells you when the old one can go.
+- **Timestamp tolerance.** The signature's `t` must be within `tolerance` seconds of now in either direction: 300 (5 minutes) by default, `null` to disable (`DRAWHOUSE_WEBHOOK_TOLERANCE=null` works too). It is checked before the signature.
+- `$verifier->verify($body, $header)` checks without parsing, and `isValid()` returns a bool. `WebhookEvent::fromJson($body)` parses a body you have already verified.
+- In your own tests, `WebhookVerifier::signatureHeader($body, $secret)` builds the header DrawHouse would send.
+
+#### Ops command
+
+```bash
+php artisan drawhouse:webhooks                      # list endpoints
+php artisan drawhouse:webhooks register --url=https://hooks.example.com/drawhouse --event=round.state_changed --event=player.updated
+php artisan drawhouse:webhooks ping 7               # queue a webhook.ping
+php artisan drawhouse:webhooks rotate 7             # asks first
+php artisan drawhouse:webhooks deliveries 7 --status=DEAD --limit=50
+```
+
+`register` and `rotate` print the signing secret, since that is the only time DrawHouse return it. Run them where the output is not logged, and put the secret straight into your secret store.
+
 ## Rate guidance
 
 Documented per method and **not enforced**. Throttling is the caller's job.
@@ -281,6 +403,7 @@ Documented per method and **not enforced**. Throttling is the caller's job.
 | `liveDraws()` / `liveDraw()` | `GET /v2/partners/charity-raffles/live[/{gameId}]` | every 15–30 s (15 s server cache) |
 | `tickets()` | `GET /v2/games/tickets` | every 5 min at most |
 | `balances()` | `GET /v2/players/balances` | every 15 min at most |
+| `webhooks()` … `allWebhookDeliveries()` | `/v2/partners/webhooks[/{id}[/…]]` | on demand; events are pushed to you |
 
 ## Errors
 
@@ -292,7 +415,8 @@ use Digitonic\DrawHouse\Exceptions\DrawHouseException;         // base: ->errorC
 use Digitonic\DrawHouse\Exceptions\InvalidRequestException;    // 400 / errorCode 7 — fix the request
 use Digitonic\DrawHouse\Exceptions\NotFoundException;          // 404 — not yours, or no live draw
 use Digitonic\DrawHouse\Exceptions\PartnerNotLiveException;    // 403 { error: partner_not_live, status } → ->partnerStatus
-use Digitonic\DrawHouse\Exceptions\ServerException;            // 500 / errorCode 3 — retry with backoff
+use Digitonic\DrawHouse\Exceptions\ServerException;            // 500 / errorCode 3, or 503 — retry with backoff
+use Digitonic\DrawHouse\Exceptions\WebhookVerificationException; // an incoming webhook failed verification (not an API call)
 
 try {
     DrawHouse::liveDraw($gameId);
@@ -315,6 +439,7 @@ try {
 | 404 | 404 | `NotFoundException` | Check the id |
 | 422 | 422 | handled: re-login | Refresh route only |
 | 500 | 3 | `ServerException` (retryable) | Retried once; back off further yourself |
+| 503 | 503 | `ServerException` (retryable) | Webhook secret storage unavailable; nothing changed. Retry later |
 
 Exception messages never contain credentials or tokens, and the SDK logs nothing.
 
@@ -336,7 +461,7 @@ Run it from the consuming application (the one holding the `DRAWHOUSE_*` env val
 
 ## DTO notes
 
-- Field names and types follow version 1.2 of the DrawHouse Partner API.
+- Field names and types follow version 1.2 of the DrawHouse Partner API and its webhooks section.
 - All DTOs are `final readonly` with a `fromArray()` constructor and a `raw` property holding the untouched payload, so fields DrawHouse adds later are never lost.
 - All ids are integers.
 - `Game.fields.*`, `Round.ticketPrice` and `LiveDraw.tickets.price` are strings on the wire. The first two are normalised to `int` / `float` / `bool` / `CarbonImmutable`; the live price is kept as a string (`priceAmount()` for a float). `Ticket.price`, balances and the players-feed `lifetime` block are numbers.

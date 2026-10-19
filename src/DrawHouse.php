@@ -19,17 +19,27 @@ use Digitonic\DrawHouse\DTO\PlayerPage;
 use Digitonic\DrawHouse\DTO\Ticket;
 use Digitonic\DrawHouse\DTO\TokenPair;
 use Digitonic\DrawHouse\DTO\UtmBreakdown;
+use Digitonic\DrawHouse\DTO\Webhooks\WebhookDeliveriesPage;
+use Digitonic\DrawHouse\DTO\Webhooks\WebhookDelivery;
+use Digitonic\DrawHouse\DTO\Webhooks\WebhookEndpoint;
+use Digitonic\DrawHouse\DTO\Webhooks\WebhookEndpointWithSecret;
+use Digitonic\DrawHouse\DTO\Webhooks\WebhookEvent;
 use Digitonic\DrawHouse\Enums\GameState;
 use Digitonic\DrawHouse\Enums\Participation;
 use Digitonic\DrawHouse\Enums\ReportInterval;
 use Digitonic\DrawHouse\Enums\RoundState;
+use Digitonic\DrawHouse\Enums\WebhookDeliveryStatus;
+use Digitonic\DrawHouse\Enums\WebhookEventType;
 use Digitonic\DrawHouse\Exceptions\AuthenticationException;
 use Digitonic\DrawHouse\Exceptions\DrawHouseException;
 use Digitonic\DrawHouse\Exceptions\InvalidRequestException;
 use Digitonic\DrawHouse\Exceptions\NotFoundException;
 use Digitonic\DrawHouse\Exceptions\PartnerNotLiveException;
+use Digitonic\DrawHouse\Exceptions\ServerException;
 use Digitonic\DrawHouse\Http\Contracts\RequiresAccessToken;
 use Digitonic\DrawHouse\Http\DrawHouseConnector;
+use Digitonic\DrawHouse\Http\Requests\CreateWebhookRequest;
+use Digitonic\DrawHouse\Http\Requests\DeleteWebhookRequest;
 use Digitonic\DrawHouse\Http\Requests\GetAffiliateReportsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetBalancesRequest;
 use Digitonic\DrawHouse\Http\Requests\GetGamesRequest;
@@ -41,8 +51,14 @@ use Digitonic\DrawHouse\Http\Requests\GetPlayersReportRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayersRequest;
 use Digitonic\DrawHouse\Http\Requests\GetReportUtmsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetTicketsRequest;
+use Digitonic\DrawHouse\Http\Requests\GetWebhookDeliveriesRequest;
+use Digitonic\DrawHouse\Http\Requests\GetWebhookRequest;
+use Digitonic\DrawHouse\Http\Requests\ListWebhooksRequest;
 use Digitonic\DrawHouse\Http\Requests\LoginRequest;
 use Digitonic\DrawHouse\Http\Requests\RefreshAccessTokenRequest;
+use Digitonic\DrawHouse\Http\Requests\RotateWebhookSecretRequest;
+use Digitonic\DrawHouse\Http\Requests\TestWebhookRequest;
+use Digitonic\DrawHouse\Http\Requests\UpdateWebhookRequest;
 use Digitonic\DrawHouse\Support\Parse;
 use Digitonic\DrawHouse\Support\PlayersQuery;
 use Generator;
@@ -553,8 +569,284 @@ final class DrawHouse
     }
 
     // -------------------------------------------------------------------
+    // Webhooks
+    // -------------------------------------------------------------------
+
+    /**
+     * GET /v2/partners/webhooks — your endpoints, oldest first. Never
+     * includes the secret.
+     *
+     * The webhook routes take the affiliate from the token and need a LIVE
+     * partner, otherwise PartnerNotLiveException.
+     *
+     * @return list<WebhookEndpoint>
+     *
+     * @throws PartnerNotLiveException
+     */
+    public function webhooks(): array
+    {
+        return array_map(WebhookEndpoint::fromArray(...), Parse::items($this->send(new ListWebhooksRequest), 'items'));
+    }
+
+    /**
+     * GET /v2/partners/webhooks/{id} — one endpoint, without its secret.
+     *
+     * @throws NotFoundException when it is not yours or has been deleted
+     */
+    public function webhook(WebhookEndpoint|int $webhook): WebhookEndpoint
+    {
+        $data = $this->send(new GetWebhookRequest($this->webhookId($webhook)));
+
+        return WebhookEndpoint::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * POST /v2/partners/webhooks — register an endpoint.
+     *
+     * The response is the ONLY time the signing secret is returned (apart
+     * from rotateWebhookSecret()), so store `->secret` server-side straight
+     * away. At most 10 endpoints per partner.
+     *
+     * @param  string  $url  Absolute `https://` URL on a public host name.
+     * @param  list<WebhookEventType>  $events  Types to receive; empty = every type. PING cannot be subscribed to.
+     * @param  string|null  $description  Up to 255 characters, for your own reference.
+     *
+     * @throws InvalidArgumentException for a URL, event or description the API would reject
+     * @throws InvalidRequestException for anything else the API rejects, including an 11th endpoint
+     * @throws ServerException on 503: secret storage was unavailable and nothing was created
+     */
+    public function createWebhook(string $url, array $events = [], ?string $description = null, bool $active = true): WebhookEndpointWithSecret
+    {
+        $this->assertWebhookUrl($url);
+        $this->assertWebhookEvents($events);
+
+        if ($description !== null) {
+            $this->assertWebhookDescription($description);
+        }
+
+        $data = $this->send(new CreateWebhookRequest($url, $events, $description, $active));
+
+        return WebhookEndpointWithSecret::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * PATCH /v2/partners/webhooks/{id} — change the URL, events, description
+     * or active flag. Only the arguments you pass are sent; at least one is
+     * required.
+     *
+     * `events: []` subscribes to every type and `description: ''` clears it.
+     * `active: true` re-enables an endpoint (including one DrawHouse switched
+     * off after 50 failures) and resets its failure counter. `active: false`
+     * stops new deliveries being queued; deliveries already queued go DEAD
+     * when due, and re-enabling does not resend them.
+     *
+     * @param  list<WebhookEventType>|null  $events
+     *
+     * @throws InvalidArgumentException when nothing is passed, or for a value the API would reject
+     * @throws NotFoundException
+     */
+    public function updateWebhook(
+        WebhookEndpoint|int $webhook,
+        ?string $url = null,
+        ?array $events = null,
+        ?string $description = null,
+        ?bool $active = null,
+    ): WebhookEndpoint {
+        $changes = [];
+
+        if ($url !== null) {
+            $this->assertWebhookUrl($url);
+            $changes['url'] = $url;
+        }
+
+        if ($events !== null) {
+            $this->assertWebhookEvents($events);
+            $changes['events'] = array_values(array_unique(array_map(static fn (WebhookEventType $type): string => $type->value, $events)));
+        }
+
+        if ($description !== null) {
+            $this->assertWebhookDescription($description);
+            $changes['description'] = $description;
+        }
+
+        if ($active !== null) {
+            $changes['active'] = $active;
+        }
+
+        if ($changes === []) {
+            throw new InvalidArgumentException('DrawHouse updateWebhook: pass at least one of url, events, description or active');
+        }
+
+        $data = $this->send(new UpdateWebhookRequest($this->webhookId($webhook), $changes));
+
+        return WebhookEndpoint::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * DELETE /v2/partners/webhooks/{id}. Deliveries still queued to it are
+     * marked DEAD; the id is not reused.
+     *
+     * @throws NotFoundException
+     */
+    public function deleteWebhook(WebhookEndpoint|int $webhook): void
+    {
+        $this->send(new DeleteWebhookRequest($this->webhookId($webhook)));
+    }
+
+    /**
+     * POST /v2/partners/webhooks/{id}/test — queue a `webhook.ping` to this
+     * endpoint, signed and delivered like a real event, and return it. The
+     * delivery normally arrives within seconds; check webhookDeliveriesPage()
+     * for the result. On an inactive endpoint the ping is not sent and its
+     * delivery shows DEAD (`endpoint inactive`).
+     *
+     * @throws NotFoundException
+     */
+    public function testWebhook(WebhookEndpoint|int $webhook): WebhookEvent
+    {
+        $data = $this->send(new TestWebhookRequest($this->webhookId($webhook)));
+
+        return WebhookEvent::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * POST /v2/partners/webhooks/{id}/rotate-secret — replace the signing
+     * secret, returned this once.
+     *
+     * Deliveries switch to the new secret straight away. Verify with both the
+     * old and the new secret (WebhookVerifier takes several) until requests
+     * verify with the new one, then drop the old.
+     *
+     * @throws NotFoundException
+     * @throws ServerException on 503: secret storage was unavailable and the old secret is still in force
+     */
+    public function rotateWebhookSecret(WebhookEndpoint|int $webhook): WebhookEndpointWithSecret
+    {
+        $data = $this->send(new RotateWebhookSecretRequest($this->webhookId($webhook)));
+
+        return WebhookEndpointWithSecret::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * GET /v2/partners/webhooks/{id}/deliveries — one cursor page of the
+     * delivery log, oldest first. Pass the previous page's `nextCursor` as
+     * `$after`; null means the end. Use allWebhookDeliveries() to walk every
+     * page.
+     *
+     * Use it to debug a failing endpoint: `lastResponseCode` and `lastError`
+     * say what your server answered. Rows do not carry the event body.
+     *
+     * @param  list<WebhookDeliveryStatus>  $statuses  Filter; repeatable.
+     * @param  CarbonInterface|string|null  $createdAfter  Only deliveries queued at or after this time.
+     * @param  int  $limit  Default 100, clamped to 500.
+     *
+     * @throws NotFoundException
+     */
+    public function webhookDeliveriesPage(
+        WebhookEndpoint|int $webhook,
+        array $statuses = [],
+        CarbonInterface|string|null $createdAfter = null,
+        int $limit = GetWebhookDeliveriesRequest::DEFAULT_LIMIT,
+        ?string $after = null,
+    ): WebhookDeliveriesPage {
+        $request = new GetWebhookDeliveriesRequest(
+            webhookId: $this->webhookId($webhook),
+            statuses: $statuses,
+            createdAfter: is_string($createdAfter) ? CarbonImmutable::parse($createdAfter) : $createdAfter,
+            limit: max(1, min($limit, GetWebhookDeliveriesRequest::MAX_LIMIT)),
+            after: $after,
+        );
+
+        $data = $this->send($request);
+
+        return WebhookDeliveriesPage::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * Lazily walk every page of the delivery log, following `nextCursor`
+     * until it is null. Nothing is fetched until the collection is iterated.
+     *
+     *   DrawHouse::allWebhookDeliveries($id, [WebhookDeliveryStatus::DEAD], now()->subDay())
+     *       ->each(fn (WebhookDelivery $d) => ...);
+     *
+     * @param  list<WebhookDeliveryStatus>  $statuses
+     * @return LazyCollection<int, WebhookDelivery>
+     */
+    public function allWebhookDeliveries(
+        WebhookEndpoint|int $webhook,
+        array $statuses = [],
+        CarbonInterface|string|null $createdAfter = null,
+        int $limit = GetWebhookDeliveriesRequest::MAX_LIMIT,
+    ): LazyCollection {
+        return LazyCollection::make(function () use ($webhook, $statuses, $createdAfter, $limit): Generator {
+            $after = null;
+
+            do {
+                $page = $this->webhookDeliveriesPage($webhook, $statuses, $createdAfter, $limit, $after);
+
+                foreach ($page->items as $delivery) {
+                    yield $delivery;
+                }
+
+                // A full page always carries a cursor, so the page after it
+                // can be empty; stop on that as well as on a null cursor.
+                $after = $page->items === [] ? null : $page->nextCursor;
+            } while ($after !== null);
+        });
+    }
+
+    // -------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------
+
+    private function webhookId(WebhookEndpoint|int $webhook): int
+    {
+        return is_int($webhook) ? $webhook : (int) $webhook->id;
+    }
+
+    /**
+     * The checks the API would answer 400 for that can be made locally: an
+     * absolute https:// URL with a host, no credentials and no fragment.
+     * Whether the host is public is left to DrawHouse.
+     */
+    private function assertWebhookUrl(string $url): void
+    {
+        $parts = parse_url($url);
+
+        $valid = is_array($parts)
+            && strtolower($parts['scheme'] ?? '') === 'https'
+            && ($parts['host'] ?? '') !== ''
+            && ! isset($parts['user'])
+            && ! isset($parts['pass'])
+            && ! isset($parts['fragment']);
+
+        if (! $valid) {
+            throw new InvalidArgumentException('DrawHouse webhook url must be an absolute https:// URL with a host name, no credentials and no fragment');
+        }
+    }
+
+    /**
+     * @param  array<mixed>  $events
+     */
+    private function assertWebhookEvents(array $events): void
+    {
+        foreach ($events as $event) {
+            if (! $event instanceof WebhookEventType) {
+                throw new InvalidArgumentException(sprintf('DrawHouse webhook events must be WebhookEventType cases, %s given', get_debug_type($event)));
+            }
+
+            if (! $event->isSubscribable()) {
+                throw new InvalidArgumentException('DrawHouse webhook.ping cannot be subscribed to; use testWebhook() to send one');
+            }
+        }
+    }
+
+    private function assertWebhookDescription(string $description): void
+    {
+        if (mb_strlen($description) > 255) {
+            throw new InvalidArgumentException('DrawHouse webhook description must be 255 characters or fewer');
+        }
+    }
 
     /**
      * Send a request, attaching the access token where required, handling

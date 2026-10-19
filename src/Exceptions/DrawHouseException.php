@@ -23,6 +23,7 @@ use RuntimeException;
  *  | 404  | 404       | NotFoundException           | Check the id / not your affiliate   |
  *  | 422  | 422       | AuthenticationException     | Refresh only: re-login (handled)    |
  *  | 500  | 3         | ServerException             | Retry with backoff                  |
+ *  | 503  | 503       | ServerException             | Retry later (webhook secret storage unavailable) |
  *
  * The message never contains credentials or tokens.
  */
@@ -92,11 +93,13 @@ class DrawHouseException extends RuntimeException
 
     /**
      * HTTP 500 / errorCode 3 is a backend failure that is safe to retry with
-     * backoff. Nothing else in the error table is retryable.
+     * backoff, and HTTP 503 (webhook secret storage unavailable) means nothing
+     * changed, so it is safe to retry later. Nothing else in the error table
+     * is retryable.
      */
     public function isRetryable(): bool
     {
-        return $this->status === 500 || $this->errorCode === 3;
+        return $this->status === 500 || $this->status === 503 || $this->errorCode === 3;
     }
 
     private static function detail(mixed $data): ?string

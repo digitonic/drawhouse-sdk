@@ -2,6 +2,17 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
+## 1.1.0 — 2026-10-19
+
+Adds DrawHouse partner webhooks.
+
+- **Endpoint management** (`/v2/partners/webhooks`): `webhooks()`, `webhook()`, `createWebhook()`, `updateWebhook()` (sends only the changed fields), `deleteWebhook()`, `testWebhook()`, `rotateWebhookSecret()`, `webhookDeliveriesPage()` and `allWebhookDeliveries()` (a `LazyCollection` that follows `nextCursor`). DTOs: `WebhookEndpoint`, `WebhookEndpointWithSecret` (the secret is kept out of debug output), `WebhookDelivery`, `WebhookDeliveriesPage`.
+- **Events**: `WebhookEvent` with typed `data`: `RoundStateChangedData` (with `WebhookEdition`), `PlayerData` (reusing the players-feed `Suppression`, `Consents` and `AccountStatus`, plus `changes`) and `PingData`. Enums `WebhookEventType`, `WebhookDeliveryStatus` and `PlayerChange`.
+- **Signature verification**: `WebhookVerifier` checks `X-DrawHouse-Signature` (`HMAC-SHA256(secret, t + "." + body)`, compared with `hash_equals`), accepts several secrets for rotations, enforces a configurable timestamp tolerance (default 5 minutes) and throws `WebhookVerificationException` with a `reason`. `event()` verifies and parses in one call. It can be resolved from the container using the new `drawhouse.webhooks` config.
+- **Errors**: HTTP 503 is now a retryable `ServerException`, for the webhook routes' "secret storage unavailable". The games and live-draw reads, which already retry a 500 once, now retry a 503 once too; webhook writes are never retried automatically.
+- **Ops command**: `drawhouse:webhooks` lists, registers, pings and rotates endpoints and shows the delivery log.
+- `Parse::enum()` now matches an exact value before the upper-snake form, so lowercase wire values parse.
+
 ## 1.0.0 — 2026-10-13
 
 Initial release. Targets version **1.2** of the DrawHouse Partner API. Released under the MIT licence.
