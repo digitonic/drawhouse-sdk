@@ -7,7 +7,9 @@ namespace Digitonic\DrawHouse;
 use Digitonic\DrawHouse\Auth\TokenStore;
 use Digitonic\DrawHouse\Console\FixturesCommand;
 use Digitonic\DrawHouse\Console\SmokeTestCommand;
+use Digitonic\DrawHouse\Console\WebhooksCommand;
 use Digitonic\DrawHouse\Http\DrawHouseConnector;
+use Digitonic\DrawHouse\Webhooks\WebhookVerifier;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -52,6 +54,19 @@ final class DrawHouseServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(DrawHouse::class, 'drawhouse');
+
+        // Built on first resolution, so an app that never receives webhooks
+        // needs no secret configured.
+        $this->app->singleton(WebhookVerifier::class, function (Application $app): WebhookVerifier {
+            $config = $app['config']->get('drawhouse.webhooks', []);
+
+            return new WebhookVerifier(
+                secrets: [(string) ($config['secret'] ?? ''), (string) ($config['previous_secret'] ?? '')],
+                tolerance: array_key_exists('tolerance', $config) && $config['tolerance'] === null
+                    ? null
+                    : (int) ($config['tolerance'] ?? WebhookVerifier::DEFAULT_TOLERANCE),
+            );
+        });
     }
 
     public function boot(): void
@@ -62,7 +77,7 @@ final class DrawHouseServiceProvider extends ServiceProvider
             ], 'drawhouse-config');
 
             // Opt-in only: never scheduled, never run by tests.
-            $this->commands([SmokeTestCommand::class, FixturesCommand::class]);
+            $this->commands([SmokeTestCommand::class, FixturesCommand::class, WebhooksCommand::class]);
         }
     }
 }

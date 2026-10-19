@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Digitonic\DrawHouse\Enums\Participation;
+use Digitonic\DrawHouse\Enums\PlayerChange;
+use Digitonic\DrawHouse\Enums\RoundState;
+use Digitonic\DrawHouse\Enums\WebhookEventType;
 use Digitonic\DrawHouse\Support\Parse;
 
 it('coerces numeric strings and numbers', function () {
@@ -47,4 +51,14 @@ it('extracts item lists from bare arrays, keyed wrappers and single objects', fu
         ->and(Parse::items(['id' => 'single']))->toBe([['id' => 'single']])
         ->and(Parse::items('nope'))->toBe([])
         ->and(Parse::items([['a' => 1], 'not-an-item']))->toHaveCount(1);
+});
+
+it('parses lowercase enum values exactly and upper-snake ones leniently', function () {
+    expect(Parse::enum(WebhookEventType::class, 'round.state_changed'))->toBe(WebhookEventType::ROUND_STATE_CHANGED)
+        ->and(Parse::enum(PlayerChange::class, 'consent'))->toBe(PlayerChange::CONSENT)
+        ->and(Parse::enum(Participation::class, 'joined'))->toBe(Participation::JOINED)
+        ->and(Parse::enum(RoundState::class, 'live-draw'))->toBe(RoundState::LIVE_DRAW)
+        ->and(Parse::enum(RoundState::class, ' open '))->toBe(RoundState::OPEN)
+        ->and(Parse::enum(WebhookEventType::class, 'draw.unknown'))->toBeNull()
+        ->and(Parse::enum(WebhookEventType::class, ['round.state_changed']))->toBeNull();
 });

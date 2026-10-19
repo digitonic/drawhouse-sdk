@@ -42,6 +42,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Webhooks
+    |--------------------------------------------------------------------------
+    |
+    | Used only when you resolve Digitonic\DrawHouse\Webhooks\WebhookVerifier
+    | from the container; construct it yourself instead if you keep secrets
+    | elsewhere (e.g. one per endpoint in your database).
+    |
+    | `secret` is the endpoint's signing secret, shown once by DrawHouse when
+    | the endpoint is registered or its secret is rotated. While rotating, put
+    | the old one in `previous_secret` so both verify until the switch-over
+    | finishes, then clear it.
+    |
+    | `tolerance` is how far, in seconds, a signature's timestamp may be from
+    | now in either direction. Set it to null to disable the check.
+    |
+    */
+    'webhooks' => [
+        'secret' => env('DRAWHOUSE_WEBHOOK_SECRET'),
+        'previous_secret' => env('DRAWHOUSE_WEBHOOK_PREVIOUS_SECRET'),
+        'tolerance' => (int) env('DRAWHOUSE_WEBHOOK_TOLERANCE', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cache
     |--------------------------------------------------------------------------
     |
