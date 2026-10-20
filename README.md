@@ -449,6 +449,26 @@ Tokens live in the Laravel cache under the `drawhouse:` prefix. `/login` returns
 
 `/refresh-access-token` returns only a new access token (with `errorCode: 200`, the one route that does not answer 0); the refresh token is unchanged and kept until its own expiry. The access token issued alongside the refresh token is retained (never used for authentication) so the refresh body can always send both tokens, even after the access token has expired. A `422` from the refresh route drops the cached pair and logs in afresh.
 
+`TokenStore::accessTokenExpiry()` says when the cached access token lapses (buffer included), for a health check or dashboard.
+
+### Several partner accounts in one app
+
+The container binding is built from `config('drawhouse')`, one account per app. An app that holds several partner accounts (one per brand, say) builds a client per account instead, giving each its own cache prefix so their tokens never mix:
+
+```php
+use Digitonic\DrawHouse\Auth\TokenStore;
+use Digitonic\DrawHouse\DrawHouse;
+use Digitonic\DrawHouse\Http\DrawHouseConnector;
+
+$client = new DrawHouse(
+    connector: new DrawHouseConnector(config('drawhouse.base_url'), config('drawhouse.timeout')),
+    tokens: new TokenStore(cache()->store('redis'), prefix: "drawhouse:brand:{$brand->id}"),
+    email: $credentials['email'],
+    password: $credentials['password'],
+    affiliateId: $credentials['affiliate_id'] ?? null,
+);
+```
+
 ## Live smoke test (opt-in)
 
 Once DrawHouse have issued credentials, verify the v1.2 surface against the real API:
