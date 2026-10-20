@@ -251,6 +251,31 @@ it('honours the token expiry from the response with a safety buffer', function (
         ->and($store->refreshToken())->toBe('refresh-ttl');
 });
 
+it('reports when the cached access token lapses, buffer included', function () {
+    $this->freezeSecond();
+    config()->set('drawhouse.cache.expiry_buffer', 30);
+    app()->forgetInstance(TokenStore::class);
+
+    $store = app(TokenStore::class);
+    expect($store->accessTokenExpiry())->toBeNull();
+
+    $store->put(TokenPair::fromLogin(loginFixture('ttl', accessTtlSeconds: 100)));
+    expect($store->accessTokenExpiry()?->toRfc3339String())->toBe(now('UTC')->addSeconds(70)->toRfc3339String());
+
+    $store->putAccessToken('access-renewed', now('UTC')->addSeconds(600)->toImmutable());
+    expect($store->accessTokenExpiry()?->toRfc3339String())->toBe(now('UTC')->addSeconds(570)->toRfc3339String());
+
+    $this->travel(571)->seconds();
+    expect($store->accessTokenExpiry())->toBeNull();
+});
+
+it('forgets the access token expiry with the tokens', function () {
+    seedTokens('old');
+    drawhouse()->forgetTokens();
+
+    expect(app(TokenStore::class)->accessTokenExpiry())->toBeNull();
+});
+
 it('can forget tokens so the next call logs in again', function () {
     seedTokens('old');
 

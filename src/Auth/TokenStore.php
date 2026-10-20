@@ -13,6 +13,7 @@ use Illuminate\Contracts\Cache\Repository;
  *
  * Keys:
  *  - access_token          the token used on the `access-token` header; expires early (buffer)
+ *  - access_token_expiry   RFC 3339 time the cached access token lapses (buffer included)
  *  - refresh_token         lives for the refresh token's full lifetime
  *  - refresh_access_token  the access token issued with the refresh token, kept for the
  *                          refresh request body only (it must be sent even once expired)
@@ -64,8 +65,14 @@ final class TokenStore
 
         if ($accessTtl > 0) {
             $this->cache->put($this->key('access_token'), $accessToken, $accessTtl);
+            $this->cache->put(
+                $this->key('access_token_expiry'),
+                CarbonImmutable::now('UTC')->addSeconds($accessTtl)->toRfc3339String(),
+                $accessTtl,
+            );
         } else {
             $this->cache->forget($this->key('access_token'));
+            $this->cache->forget($this->key('access_token_expiry'));
         }
 
         $refreshTtl = $this->ttlFor($this->refreshTokenExpiry(), $this->refreshTokenTtl);
@@ -96,14 +103,22 @@ final class TokenStore
 
     public function refreshTokenExpiry(): ?CarbonImmutable
     {
-        $value = $this->string('refresh_token_expiry');
+        return $this->dateTime('refresh_token_expiry');
+    }
 
-        return $value === null ? null : CarbonImmutable::parse($value)->utc();
+    /**
+     * When the cached access token lapses: the API's expiry less the buffer,
+     * after which the next call refreshes. Null when no access token is
+     * cached. For health checks and dashboards; the client never needs it.
+     */
+    public function accessTokenExpiry(): ?CarbonImmutable
+    {
+        return $this->accessToken() === null ? null : $this->dateTime('access_token_expiry');
     }
 
     public function forgetTokens(): void
     {
-        foreach (['access_token', 'refresh_token', 'refresh_access_token', 'refresh_token_expiry'] as $key) {
+        foreach (['access_token', 'access_token_expiry', 'refresh_token', 'refresh_access_token', 'refresh_token_expiry'] as $key) {
             $this->cache->forget($this->key($key));
         }
     }
@@ -130,6 +145,13 @@ final class TokenStore
         $value = $this->cache->get($this->key($name));
 
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    private function dateTime(string $name): ?CarbonImmutable
+    {
+        $value = $this->string($name);
+
+        return $value === null ? null : CarbonImmutable::parse($value)->utc();
     }
 
     private function ttlFor(?CarbonImmutable $expiresAt, int $fallback): int

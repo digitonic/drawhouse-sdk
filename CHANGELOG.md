@@ -2,6 +2,11 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
+## 1.2.0 — Unreleased
+
+- **Laravel 13 apps on Saloon's Laravel plugin v5**: `saloonphp/laravel-plugin` now accepts `^4.0|^5.0`. Nothing in `src/` uses the plugin; it is only needed by the test suite, and by apps that fake requests with `Saloon::fake()`.
+- **`TokenStore::accessTokenExpiry()`**: when the cached access token lapses (the API's expiry less the buffer), or null when none is cached. For health checks and dashboards; it is cleared with the other token keys by `forgetTokens()`.
+
 ## 1.1.0 — 2026-10-19
 
 Adds DrawHouse partner webhooks.
