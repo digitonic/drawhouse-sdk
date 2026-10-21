@@ -1,6 +1,6 @@
 # DrawHouse Partner API SDK
 
-A thin, dependency-light Laravel package that wraps the [DrawHouse](https://api.prod.raffletown.co.uk) Partner API one-to-one, built on [Saloon](https://docs.saloon.dev). Targets the October 2026 Partner API reference: version **1.2** plus partner webhooks.
+A thin, dependency-light Laravel package that wraps the [DrawHouse](https://api.prod.raffletown.co.uk) Partner API one-to-one, built on [Saloon](https://docs.saloon.dev). Targets the October 2026 Partner API reference: version **1.4**, including partner webhooks, activity events and the ticket, money and metrics feeds.
 
 - One typed method per endpoint, every response a readonly DTO.
 - Transparent auth: login, cached tokens, `401 → refresh → retry`, re-login if the refresh fails (including a `422` refresh rejection).
@@ -101,9 +101,11 @@ DrawHouse::allPlayers($query)->each(function (PlayerDetail $p) {
     $p->suppression->selfExcluded; ->selfExclusionUntil; ->selfExclusionForever; ->gamstop; ->timedOutUntil; ->kycStatus; ->emailSuppressed;
     $p->attribution->utmSource; ->utmMedium; ->utmCampaign; ->landingUrl; ->params; ->param('clickid');
     $p->attribution->acquisitionChannel;   // PAID | ORGANIC | UNKNOWN — DrawHouse's rule, see below
-    $p->activity->lastLoginAt; ->firstPurchaseAt; ->lastPurchaseAt; ->firstDepositAt;
+    $p->activity->lastLoginAt; ->firstPurchaseAt; ->lastPurchaseAt; ->firstDepositAt; ->firstDepositValue;   // value: GBP, v1.4
     $p->consents->email->granted; ->sms->granted; ->partnerOffers->granted;   // partnerOffers->recordedAt is always null
     $p->lifetime?->depositCount; ->depositValue; ->cashSpend; ->siteCreditSpend; ->refunds; ->cashPrizesWon; ->withdrawals;   // GBP
+    $p->lifetime?->netRevenue;             // cashSpend − refunds − cashPrizesWon (v1.4)
+    $p->balances?->cash; ->siteCredit;     // the player's balances now (v1.4); same gate as lifetime
 });
 
 // One page at a time.
@@ -251,16 +253,85 @@ Rate guidance: responses are **cached server-side for 15 seconds** (`Cache-Contr
 
 ### Tickets
 
+The **tickets feed** (Partner API v1.4) is the recommended route: every ticket your players bought, across every draw, cursor-paged and filtered in the database, with attribution and the raffle outcome.
+
 ```php
-$tickets = DrawHouse::tickets($game);   // GET /v2/games/tickets?gameId= → list<Ticket>  (Game or int)
-$tickets[0]->price;                     // float, amount actually paid (discounted batches can be below base price)
-$tickets[0]->playerId;                  // int, matches PlayerDetail::$id / Player::$id
-$tickets[0]->paymentStatus;             // e.g. SUCCEEDED
-$tickets[0]->createdAt;                 // CarbonImmutable — bucket by this to chart entries over a draw
-$tickets[0]->utmSource;                 // null when empty on the wire; also utmMedium, utmCampaign, hasUtm()
+use Digitonic\DrawHouse\Enums\TicketPaymentStatus;
+use Digitonic\DrawHouse\Support\TicketsQuery;
+
+// Daily reconciliation: everything that changed since the last pull (refunds and results move updatedAt).
+DrawHouse::allTickets(
+    TicketsQuery::make()->updatedAfter($since)->paymentStatus(TicketPaymentStatus::SUCCEEDED)->limit(500)
+)->each(function (PartnerTicket $t) {
+    $t->id; $t->ticketRef; $t->playerId; $t->gameId; $t->roundId; $t->editionId;
+    $t->status;          // TicketStatus: INPLAY, WINNER, LOST, REFUNDED…
+    $t->ticketType;      // TicketType: REGULAR (paid) or BONUS / REBUY / EARLY / REFERRAL (granted, price 0)
+    $t->price;           // float, amount actually paid
+    $t->paymentStatus;   // TicketPaymentStatus: SUCCEEDED is a real purchase
+    $t->paymentType;     // TicketPaymentType: DEBIT, CREDIT (site credit) or POSTAL
+    $t->checkoutId;      // shared by every ticket in one basket; matches ticket.purchased and the money feed
+    $t->attribution->utmCampaign;                 // null when empty on the wire
+    $t->raffle?->ticketNumber; $t->raffle?->hasWon(); $t->raffle?->prizeName;   // prize fields once revealed
+});
+
+// Live monitoring of one round: only new tickets come back after the cursor.
+$page = DrawHouse::ticketsPage(TicketsQuery::make()->round($roundId), after: $lastCursor);   // PartnerTicketPage
 ```
 
-Rate guidance: no more than once every 5 minutes. Aggregate sold/available counts for open draws are also on `liveDraws()`.
+Filters: `createdAfter`, `createdBefore`, `updatedAfter`, `game()`, `round()`, `edition()`, `player()`, `status()`, `paymentStatus()` and `ticketType()` (the list filters are repeatable). `limit` defaults to 100 and is clamped to 500.
+
+The older per-draw route is offset-paged since v1.4 (1,000 a page by default, 5,000 at most, with `total`). `tickets()` now follows the pages and returns every ticket; before 1.3.0 it returned only the first page.
+
+```php
+$tickets = DrawHouse::tickets($game);                              // GET /v2/games/tickets?gameId= → list<Ticket>, every page (deprecated: prefer allTickets())
+$page = DrawHouse::gameTicketsPage($game, limit: 1000, offset: 0); // one page: ->tickets, ->total, ->hasMore(), ->nextOffset()
+$tickets[0]->price; ->playerId; ->paymentStatus; ->createdAt; ->utmSource; ->hasUtm();
+```
+
+Rate guidance: the feed daily with `updatedAfter`, or no more than every 5 minutes per round when monitoring; the per-draw route no more than every 5 minutes. Aggregate sold/available counts for open draws are also on `liveDraws()`.
+
+### Money feed (transactions)
+
+One row per deposit, purchase, refund, prize payout, withdrawal or site-credit movement (Partner API v1.4). Nothing is cumulative. The cursor is **opaque**: the lazy walkers pass it back for you.
+
+```php
+use Digitonic\DrawHouse\Enums\MoneyKind;
+use Digitonic\DrawHouse\Support\TransactionsQuery;
+
+DrawHouse::allTransactions(
+    TransactionsQuery::make()->kind(MoneyKind::DEPOSIT)->status('SUCCESS')->updatedAfter($since)->limit(500)
+)->each(function (MoneyEvent $e) {
+    $e->id;          // "DEPOSIT:9912", stable and unique across the feed
+    $e->kind;        // MoneyKind (null for a kind the SDK does not know; ->kindName has the wire value)
+    $e->amount;      // GBP, always positive; kind gives the direction. A PURCHASE's is the basket total
+    $e->cashAmount; $e->siteCreditAmount;   // PURCHASE only
+    $e->status;      // vocabulary depends on kind
+    $e->isSettled(); // count money only on settled rows
+    $e->checkoutId; $e->gameId; $e->roundId; $e->reference; $e->createdAt; $e->updatedAt;
+});
+
+DrawHouse::allPlayerTransactions($playerId, TransactionsQuery::make()->kind(MoneyKind::PURCHASE));   // one player's history
+```
+
+A row's `status` changes over time (a deposit goes CREATED → PROCESSING → SUCCESS or FAILED; a purchase can be REFUNDED) and moves `updatedAt`, so a daily pull with `updatedAfter` picks up rows that settled after you first saw them. Rate guidance: daily.
+
+### Daily metrics
+
+Per-day registrations, deposits, spend, prizes and withdrawals for your affiliate (Partner API v1.4). These are **per-day values**, unlike the cumulative `dailyReports()`.
+
+```php
+use Digitonic\DrawHouse\Enums\MetricsGroupBy;
+use Digitonic\DrawHouse\Enums\MetricsTimezone;
+
+$metrics = DrawHouse::dailyMetrics('2026-10-01', '2026-10-20', MetricsTimezone::EUROPE_LONDON, MetricsGroupBy::SOURCE);   // both days inclusive, ≤ 366 days
+foreach ($metrics->rows as $row) {
+    $row->day; $row->group?->utmCampaign; $row->group?->acquisitionChannel;   // group with groupBy=source / edition
+    $row->registrations; $row->firstDeposits; $row->depositValue; $row->ticketsSold; $row->ticketRevenue;
+    $row->cashSpend; $row->refunds; $row->cashPrizesPaid; $row->netCashRevenue;   // GBP
+}
+```
+
+Days with no activity are omitted. The figures are computed from the same tables as the money feed, so the two agree. Rate guidance: daily, for the previous day.
 
 ### Balances
 
@@ -282,6 +353,10 @@ DrawHouse push events to HTTPS endpoints you register. The SDK covers the statel
 | `round.state_changed` | A round on one of your draws moves into `OPEN`, `RESULTED`, `LIVE_DRAW`, `COMPLETED` or `CANCELLED` (never `SETUP`, `READY`, `VOID`) | `RoundStateChangedData` |
 | `player.registered` | One of your players completes registration | `PlayerData` |
 | `player.updated` | A player's account status, consent or profile changes | `PlayerData` with `changes` |
+| `ticket.purchased` | A checkout completes: one event per basket (v1.4) | `TicketPurchasedData` |
+| `instant_win.revealed` | An instant-win prize is revealed (v1.4) | `InstantWinData` |
+| `wallet.credited` / `wallet.debited` | A player's cash wallet moves (v1.4) | `WalletMovementData` |
+| `draw.won` | A draw prize is assigned to one of your players' tickets (v1.4) | `DrawWonData` |
 | `webhook.ping` | You call `testWebhook()`; cannot be subscribed to | `PingData` |
 
 #### Managing endpoints
@@ -356,7 +431,7 @@ $event->affiliateId; $event->resource->type; $event->resource->id;
 if ($round = $event->roundStateChanged()) {          // RoundStateChangedData
     $round->gameId; $round->gameName; $round->roundId; $round->roundNumber;
     $round->fromState; $round->toState;               // RoundState
-    $round->isResulted();                             // winners decided: pull them from the draw endpoints
+    $round->isResulted();                             // winners decided; each arrives as a draw.won event
     $round->defaultEdition()?->url;                   // your player-facing page; ->editions lists all your active ones
 }
 
@@ -368,9 +443,28 @@ if ($player = $event->player()) {                     // PlayerData, for player.
     $player->needsProfileRefetch();                   // PROFILE changed: the event has no PII, call DrawHouse::player($player->playerId)
     $player->effectiveStatusAt(now());                // a time-out ending sends no event; evaluate it yourself
 }
+
+if ($purchase = $event->ticketPurchased()) {          // TicketPurchasedData: one checkout
+    $purchase->playerId; $purchase->checkoutId; $purchase->gameId; $purchase->roundId; $purchase->editionId;
+    $purchase->quantity; $purchase->amount; $purchase->cashAmount; $purchase->siteCreditAmount;   // GBP
+    $purchase->ticketNumbers; $purchase->instantWins; $purchase->attribution->utmCampaign;
+}
+
+if ($win = $event->instantWin()) {                    // InstantWinData
+    $win->raffleTicketId; $win->checkoutId; $win->prizeType; $win->prizeName; $win->prizeAmount;
+}
+
+if ($movement = $event->walletMovement()) {           // WalletMovementData, for wallet.credited and wallet.debited
+    $event->isWalletCredit();                         // the event type gives the direction; amount is always positive
+    $movement->kind; $movement->amount; $movement->balanceAfter; $movement->reference?->type; $movement->reference?->id;
+}
+
+if ($won = $event->drawWon()) {                       // DrawWonData: one per prize assignment
+    $won->drawPrizeId; $won->prizePoolId; $won->prizeName; $won->prizeAmount; $won->prizeCategory; $won->fulfilment;
+}
 ```
 
-- **Respond fast.** Any `2xx` within 5 seconds counts as delivered; anything else is retried, up to 8 attempts, after which the delivery is `DEAD` and never resent. 50 failures in a row switch the endpoint off. Store the event and process it on a queue, and keep a polling job as a backstop.
+- **Respond fast.** Any `2xx` within 5 seconds counts as delivered; anything else is retried 1 min, 5 min, 30 min, 2 h, 12 h, 24 h and 24 h later, up to 8 attempts, after which the delivery is `DEAD` and only resent if DrawHouse ops requeue it. 50 failures in a row switch the endpoint off. Store the event and process it on a queue, and keep a polling job as a backstop.
 - **Rotating a secret.** Call `rotateWebhookSecret()`, then verify with both the new and the old secret until requests verify with the new one. `verify()` returns the index of the secret that matched (`0` = the first you passed), which tells you when the old one can go.
 - **Timestamp tolerance.** The signature's `t` must be within `tolerance` seconds of now in either direction: 300 (5 minutes) by default, `null` to disable (`DRAWHOUSE_WEBHOOK_TOLERANCE=null` works too). It is checked before the signature.
 - `$verifier->verify($body, $header)` checks without parsing, and `isValid()` returns a bool. `WebhookEvent::fromJson($body)` parses a body you have already verified.
@@ -401,7 +495,10 @@ Documented per method and **not enforced**. Throttling is the caller's job.
 | `utms()` | `GET /v2/affiliates/reports/{id}/utms` | daily, previous day |
 | `games()` / `allGames()` | `GET /v2/partners/charity-raffles/games` | — |
 | `liveDraws()` / `liveDraw()` | `GET /v2/partners/charity-raffles/live[/{gameId}]` | every 15–30 s (15 s server cache) |
-| `tickets()` | `GET /v2/games/tickets` | every 5 min at most |
+| `allTickets()` / `ticketsPage()` | `GET /v2/partners/tickets` | daily with `updatedAfter`; every 5 min at most per round |
+| `tickets()` / `gameTicketsPage()` | `GET /v2/games/tickets` | every 5 min at most |
+| `allTransactions()` / `transactionsPage()` / `…PlayerTransactions…()` | `GET /v2/partners/[players/{id}/]transactions` | daily, with `updatedAfter` |
+| `dailyMetrics()` | `GET /v2/partners/metrics/daily` | daily, previous day |
 | `balances()` | `GET /v2/players/balances` | every 15 min at most |
 | `webhooks()` … `allWebhookDeliveries()` | `/v2/partners/webhooks[/{id}[/…]]` | on demand; events are pushed to you |
 
