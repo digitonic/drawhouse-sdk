@@ -343,3 +343,24 @@ it('maps a 400 on the feed to InvalidRequestException', function () {
 
     drawhouse()->playersPage(after: 'abc');
 })->throws(InvalidRequestException::class, 'after');
+
+it('reads the first deposit value, net revenue and balances added in Partner API v1.4', function () {
+    $player = PlayerDetail::fromArray(playerDetailFixture(overrides: [
+        'activity' => ['firstDepositValue' => 20],
+        'lifetime' => ['netRevenue' => 55],
+        'balances' => ['cash' => 5, 'siteCredit' => 1.5],
+    ]));
+
+    expect($player->activity->firstDepositValue)->toBe(20.0)
+        ->and($player->lifetime?->netRevenue)->toBe(55.0)
+        ->and($player->balances?->cash)->toBe(5.0)
+        ->and($player->balances?->siteCredit)->toBe(1.5);
+});
+
+it('leaves the v1.4 player fields null on an older response', function () {
+    $player = PlayerDetail::fromArray(playerDetailFixture());
+
+    expect($player->activity->firstDepositValue)->toBeNull()
+        ->and($player->lifetime?->netRevenue)->toBeNull()
+        ->and($player->balances)->toBeNull();
+});

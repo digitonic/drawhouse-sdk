@@ -18,8 +18,10 @@ use JsonException;
  * - Order on `occurredAt`, not on arrival.
  *
  * `data` is typed by `type`: RoundStateChangedData, PlayerData (registered
- * and updated) or PingData. For a type this SDK does not know yet it is the
- * raw array, and `type` is null (`typeName` keeps the wire value).
+ * and updated), TicketPurchasedData, InstantWinData, WalletMovementData
+ * (credited and debited), DrawWonData or PingData. For a type this SDK does
+ * not know yet it is the raw array, and `type` is null (`typeName` keeps the
+ * wire value).
  *
  * Build one from a verified request with WebhookVerifier::event(), or from a
  * body you have already verified with fromJson().
@@ -31,7 +33,7 @@ final readonly class WebhookEvent
      * @param  WebhookEventType|null  $type  Null for a type this SDK does not know.
      * @param  string|null  $typeName  `type` as sent.
      * @param  int|null  $affiliateId  Your affiliate id.
-     * @param  RoundStateChangedData|PlayerData|PingData|array<string, mixed>  $data
+     * @param  RoundStateChangedData|PlayerData|TicketPurchasedData|InstantWinData|WalletMovementData|DrawWonData|PingData|array<string, mixed>  $data
      * @param  array<string, mixed>  $raw
      */
     public function __construct(
@@ -41,7 +43,7 @@ final readonly class WebhookEvent
         public ?CarbonImmutable $occurredAt,
         public ?int $affiliateId,
         public WebhookResource $resource,
-        public RoundStateChangedData|PlayerData|PingData|array $data,
+        public RoundStateChangedData|PlayerData|TicketPurchasedData|InstantWinData|WalletMovementData|DrawWonData|PingData|array $data,
         public array $raw = [],
     ) {}
 
@@ -63,6 +65,10 @@ final readonly class WebhookEvent
             data: match ($type) {
                 WebhookEventType::ROUND_STATE_CHANGED => RoundStateChangedData::fromArray($payload),
                 WebhookEventType::PLAYER_REGISTERED, WebhookEventType::PLAYER_UPDATED => PlayerData::fromArray($payload),
+                WebhookEventType::TICKET_PURCHASED => TicketPurchasedData::fromArray($payload),
+                WebhookEventType::INSTANT_WIN_REVEALED => InstantWinData::fromArray($payload),
+                WebhookEventType::WALLET_CREDITED, WebhookEventType::WALLET_DEBITED => WalletMovementData::fromArray($payload),
+                WebhookEventType::DRAW_WON => DrawWonData::fromArray($payload),
                 WebhookEventType::PING => PingData::fromArray($payload),
                 null => $payload,
             },
@@ -115,6 +121,47 @@ final readonly class WebhookEvent
     public function player(): ?PlayerData
     {
         return $this->data instanceof PlayerData ? $this->data : null;
+    }
+
+    /**
+     * The typed data of a `ticket.purchased` event, else null.
+     */
+    public function ticketPurchased(): ?TicketPurchasedData
+    {
+        return $this->data instanceof TicketPurchasedData ? $this->data : null;
+    }
+
+    /**
+     * The typed data of an `instant_win.revealed` event, else null.
+     */
+    public function instantWin(): ?InstantWinData
+    {
+        return $this->data instanceof InstantWinData ? $this->data : null;
+    }
+
+    /**
+     * The typed data of a `wallet.credited` or `wallet.debited` event, else
+     * null. isWalletCredit() tells the two apart.
+     */
+    public function walletMovement(): ?WalletMovementData
+    {
+        return $this->data instanceof WalletMovementData ? $this->data : null;
+    }
+
+    /**
+     * Whether this is a `wallet.credited` event (money into the wallet).
+     */
+    public function isWalletCredit(): bool
+    {
+        return $this->type === WebhookEventType::WALLET_CREDITED;
+    }
+
+    /**
+     * The typed data of a `draw.won` event, else null.
+     */
+    public function drawWon(): ?DrawWonData
+    {
+        return $this->data instanceof DrawWonData ? $this->data : null;
     }
 
     /**

@@ -12,11 +12,17 @@ use Digitonic\DrawHouse\DTO\DailyReport;
 use Digitonic\DrawHouse\DTO\DailyReportDelta;
 use Digitonic\DrawHouse\DTO\Game;
 use Digitonic\DrawHouse\DTO\LiveDraw;
+use Digitonic\DrawHouse\DTO\Metrics\DailyMetrics;
+use Digitonic\DrawHouse\DTO\Money\MoneyEvent;
+use Digitonic\DrawHouse\DTO\Money\MoneyEventPage;
 use Digitonic\DrawHouse\DTO\Partner;
 use Digitonic\DrawHouse\DTO\Player;
 use Digitonic\DrawHouse\DTO\PlayerDetail;
 use Digitonic\DrawHouse\DTO\PlayerPage;
 use Digitonic\DrawHouse\DTO\Ticket;
+use Digitonic\DrawHouse\DTO\Tickets\GameTicketsPage;
+use Digitonic\DrawHouse\DTO\Tickets\PartnerTicket;
+use Digitonic\DrawHouse\DTO\Tickets\PartnerTicketPage;
 use Digitonic\DrawHouse\DTO\TokenPair;
 use Digitonic\DrawHouse\DTO\UtmBreakdown;
 use Digitonic\DrawHouse\DTO\Webhooks\WebhookDeliveriesPage;
@@ -25,6 +31,8 @@ use Digitonic\DrawHouse\DTO\Webhooks\WebhookEndpoint;
 use Digitonic\DrawHouse\DTO\Webhooks\WebhookEndpointWithSecret;
 use Digitonic\DrawHouse\DTO\Webhooks\WebhookEvent;
 use Digitonic\DrawHouse\Enums\GameState;
+use Digitonic\DrawHouse\Enums\MetricsGroupBy;
+use Digitonic\DrawHouse\Enums\MetricsTimezone;
 use Digitonic\DrawHouse\Enums\Participation;
 use Digitonic\DrawHouse\Enums\ReportInterval;
 use Digitonic\DrawHouse\Enums\RoundState;
@@ -42,15 +50,18 @@ use Digitonic\DrawHouse\Http\Requests\CreateWebhookRequest;
 use Digitonic\DrawHouse\Http\Requests\DeleteWebhookRequest;
 use Digitonic\DrawHouse\Http\Requests\GetAffiliateReportsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetBalancesRequest;
+use Digitonic\DrawHouse\Http\Requests\GetDailyMetricsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetGamesRequest;
 use Digitonic\DrawHouse\Http\Requests\GetLiveDrawRequest;
 use Digitonic\DrawHouse\Http\Requests\GetLiveDrawsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetMeRequest;
+use Digitonic\DrawHouse\Http\Requests\GetPartnerTicketsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayerRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayersReportRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayersRequest;
 use Digitonic\DrawHouse\Http\Requests\GetReportUtmsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetTicketsRequest;
+use Digitonic\DrawHouse\Http\Requests\GetTransactionsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetWebhookDeliveriesRequest;
 use Digitonic\DrawHouse\Http\Requests\GetWebhookRequest;
 use Digitonic\DrawHouse\Http\Requests\ListWebhooksRequest;
@@ -61,6 +72,8 @@ use Digitonic\DrawHouse\Http\Requests\TestWebhookRequest;
 use Digitonic\DrawHouse\Http\Requests\UpdateWebhookRequest;
 use Digitonic\DrawHouse\Support\Parse;
 use Digitonic\DrawHouse\Support\PlayersQuery;
+use Digitonic\DrawHouse\Support\TicketsQuery;
+use Digitonic\DrawHouse\Support\TransactionsQuery;
 use Generator;
 use Illuminate\Support\LazyCollection;
 use InvalidArgumentException;
@@ -118,8 +131,9 @@ final class DrawHouse
         }
 
         try {
-            // /login is the one endpoint documented WITHOUT the envelope: the
-            // tokens sit at the top level of the body.
+            // Since Partner API v1.4 /login uses the envelope like every
+            // other route; earlier versions put the tokens at the top level
+            // of the body. Both are accepted.
             $data = $this->unwrap($this->connector->send(new LoginRequest($this->email, $this->password)), bare: true);
         } catch (DrawHouseException $e) {
             throw AuthenticationException::fromDrawHouse($e, 'login');
@@ -539,11 +553,18 @@ final class DrawHouse
     // -------------------------------------------------------------------
 
     /**
-     * GET /v2/games/tickets?gameId= — every ticket in a game.
+     * GET /v2/games/tickets?gameId= — every ticket your players bought in one
+     * draw, every page.
+     *
+     * The route is offset-paged since Partner API v1.4 (5000 a page at
+     * most); this follows `total` until it has them all. Before v1.4 it
+     * returned only the first 1000.
      *
      * Rate guidance: no more than once every 5 minutes per game.
      *
-     * Aggregate sold/available counts for open draws are also on liveDraws().
+     * @deprecated DrawHouse recommend the tickets feed for new integrations:
+     *             allTickets(TicketsQuery::make()->game($id)), which is
+     *             cursor-paged, filterable and carries attribution and outcome.
      *
      * @return list<Ticket>
      *
@@ -551,9 +572,86 @@ final class DrawHouse
      */
     public function tickets(Game|int $game): array
     {
-        $id = $game instanceof Game ? (int) $game->id : $game;
+        $tickets = [];
+        $offset = 0;
 
-        return array_map(Ticket::fromArray(...), Parse::items($this->send(new GetTicketsRequest($id)), 'tickets'));
+        do {
+            $page = $this->gameTicketsPage($game, GetTicketsRequest::MAX_LIMIT, $offset);
+            $tickets = [...$tickets, ...$page->tickets];
+            $offset = $page->nextOffset();
+        } while ($page->hasMore());
+
+        return $tickets;
+    }
+
+    /**
+     * GET /v2/games/tickets?gameId=&limit=&offset= — one offset page of a
+     * draw's tickets. `total` counts every matching ticket; keep paging while
+     * GameTicketsPage::hasMore().
+     *
+     * @param  int  $limit  Default 1000, clamped to 5000.
+     *
+     * @throws NotFoundException when the game does not exist or is not yours
+     */
+    public function gameTicketsPage(Game|int $game, int $limit = GetTicketsRequest::DEFAULT_LIMIT, int $offset = 0): GameTicketsPage
+    {
+        $id = $game instanceof Game ? (int) $game->id : $game;
+        $request = new GetTicketsRequest($id, max(1, min($limit, GetTicketsRequest::MAX_LIMIT)), max(0, $offset));
+
+        $data = $this->send($request);
+
+        return GameTicketsPage::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * GET /v2/partners/tickets — one cursor page of the tickets feed (Partner
+     * API v1.4): every ticket your players bought, across every draw, with
+     * attribution and raffle outcome.
+     *
+     * The affiliate is taken from the token; the partner must be LIVE,
+     * otherwise PartnerNotLiveException. Every filter runs in the database,
+     * so a page is `limit` rows unless the tickets ran out.
+     *
+     * Rate guidance: daily with `updatedAfter` (payment outcome, refunds and
+     * results all move it); no more than every 5 minutes with `roundId` when
+     * monitoring a live draw.
+     *
+     * @throws PartnerNotLiveException
+     * @throws InvalidRequestException for a bad parameter the client did not catch
+     */
+    public function ticketsPage(?TicketsQuery $query = null, ?string $after = null): PartnerTicketPage
+    {
+        $data = $this->send(new GetPartnerTicketsRequest($query ?? TicketsQuery::make(), $after));
+
+        return PartnerTicketPage::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * Lazily walk every page of the tickets feed, following `nextCursor`
+     * until it is null.
+     *
+     *   DrawHouse::allTickets(TicketsQuery::make()->updatedAfter($since)->paymentStatus(TicketPaymentStatus::SUCCEEDED)->limit(500))
+     *       ->each(fn (PartnerTicket $t) => ...);
+     *
+     * @return LazyCollection<int, PartnerTicket>
+     */
+    public function allTickets(?TicketsQuery $query = null): LazyCollection
+    {
+        $query ??= TicketsQuery::make();
+
+        return LazyCollection::make(function () use ($query): Generator {
+            $after = null;
+
+            do {
+                $page = $this->ticketsPage($query, $after);
+
+                foreach ($page->items as $ticket) {
+                    yield $ticket;
+                }
+
+                $after = $page->items === [] ? null : $page->nextCursor;
+            } while ($after !== null);
+        });
     }
 
     /**
@@ -566,6 +664,104 @@ final class DrawHouse
         $data = $this->send(new GetBalancesRequest);
 
         return Balances::fromArray(is_array($data) ? $data : []);
+    }
+
+    // -------------------------------------------------------------------
+    // Money and metrics
+    // -------------------------------------------------------------------
+
+    /**
+     * GET /v2/partners/transactions — one page of the money feed (Partner API
+     * v1.4): every deposit, purchase, refund, prize payout, withdrawal and
+     * site-credit movement by your players, one row each. Nothing is
+     * cumulative.
+     *
+     * The affiliate is taken from the token; the partner must be LIVE. The
+     * cursor is opaque: pass `nextCursor` back as `$after` verbatim. Count
+     * money only on settled rows (MoneyEvent::isSettled()).
+     *
+     * Rate guidance: daily, with `updatedAfter`.
+     *
+     * @throws PartnerNotLiveException
+     * @throws InvalidRequestException for a bad parameter the client did not catch
+     */
+    public function transactionsPage(?TransactionsQuery $query = null, ?string $after = null): MoneyEventPage
+    {
+        $data = $this->send(new GetTransactionsRequest($query ?? TransactionsQuery::make(), after: $after));
+
+        return MoneyEventPage::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * Lazily walk every page of the money feed.
+     *
+     *   DrawHouse::allTransactions(TransactionsQuery::make()->kind(MoneyKind::DEPOSIT)->status('SUCCESS')->updatedAfter($since))
+     *       ->each(fn (MoneyEvent $e) => ...);
+     *
+     * @return LazyCollection<int, MoneyEvent>
+     */
+    public function allTransactions(?TransactionsQuery $query = null): LazyCollection
+    {
+        return $this->walkTransactions($query ?? TransactionsQuery::make(), null);
+    }
+
+    /**
+     * GET /v2/partners/players/{id}/transactions — one page of the money feed
+     * for one player. Takes the same filters except the player. A player
+     * outside your affiliate returns an empty page, not a 404.
+     */
+    public function playerTransactionsPage(PlayerDetail|Player|int $player, ?TransactionsQuery $query = null, ?string $after = null): MoneyEventPage
+    {
+        $id = is_int($player) ? $player : (int) $player->id;
+
+        $data = $this->send(new GetTransactionsRequest($query ?? TransactionsQuery::make(), $id, $after));
+
+        return MoneyEventPage::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * Lazily walk every page of one player's money feed.
+     *
+     * @return LazyCollection<int, MoneyEvent>
+     */
+    public function allPlayerTransactions(PlayerDetail|Player|int $player, ?TransactionsQuery $query = null): LazyCollection
+    {
+        return $this->walkTransactions($query ?? TransactionsQuery::make(), is_int($player) ? $player : (int) $player->id);
+    }
+
+    /**
+     * GET /v2/partners/metrics/daily — per-day registrations, deposits,
+     * spend, prizes and withdrawals for your affiliate (Partner API v1.4).
+     *
+     * PER-DAY values, not cumulative snapshots like dailyReports(). Days are
+     * bucketed in `$timezone` and days with no activity are omitted. `$from`
+     * and `$to` are both inclusive and at most 366 days apart. Computed from
+     * the same tables as the money feed, so the two agree.
+     *
+     * Rate guidance: daily, for the previous day.
+     *
+     * @throws InvalidArgumentException when `$to` is before `$from` or the range is over 366 days
+     */
+    public function dailyMetrics(
+        CarbonInterface|string $from,
+        CarbonInterface|string $to,
+        MetricsTimezone $timezone = MetricsTimezone::EUROPE_LONDON,
+        MetricsGroupBy $groupBy = MetricsGroupBy::NONE,
+    ): DailyMetrics {
+        $start = CarbonImmutable::parse($this->dateParam($from));
+        $end = CarbonImmutable::parse($this->dateParam($to));
+
+        if ($end->lessThan($start)) {
+            throw new InvalidArgumentException('DrawHouse daily metrics: `to` must not be before `from`');
+        }
+
+        if ($start->diffInDays($end) > GetDailyMetricsRequest::MAX_DAYS) {
+            throw new InvalidArgumentException(sprintf('DrawHouse daily metrics: the range is limited to %d days', GetDailyMetricsRequest::MAX_DAYS));
+        }
+
+        $data = $this->send(new GetDailyMetricsRequest($start->toDateString(), $end->toDateString(), $timezone, $groupBy));
+
+        return DailyMetrics::fromArray(is_array($data) ? $data : []);
     }
 
     // -------------------------------------------------------------------
@@ -798,6 +994,28 @@ final class DrawHouse
     // -------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------
+
+    /**
+     * @return LazyCollection<int, MoneyEvent>
+     */
+    private function walkTransactions(TransactionsQuery $query, ?int $playerId): LazyCollection
+    {
+        return LazyCollection::make(function () use ($query, $playerId): Generator {
+            $after = null;
+
+            do {
+                $page = $playerId === null
+                    ? $this->transactionsPage($query, $after)
+                    : $this->playerTransactionsPage($playerId, $query, $after);
+
+                foreach ($page->items as $event) {
+                    yield $event;
+                }
+
+                $after = $page->items === [] ? null : $page->nextCursor;
+            } while ($after !== null);
+        });
+    }
 
     private function webhookId(WebhookEndpoint|int $webhook): int
     {

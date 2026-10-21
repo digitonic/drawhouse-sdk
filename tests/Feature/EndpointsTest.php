@@ -103,7 +103,7 @@ it('fetches tickets for a game', function () {
 
     $request = sentPendingRequest($mock, 0);
     expect($request->getUrl())->toBe('https://api.test.raffletown.co.uk/v2/games/tickets')
-        ->and(sentQueryString($mock, 0))->toBe('gameId=101')
+        ->and(sentQueryString($mock, 0))->toBe('gameId=101&limit=5000&offset=0')
         ->and($request->headers()->get('access-token'))->toBe('access-old');
 });
 
