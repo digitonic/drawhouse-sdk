@@ -16,8 +16,8 @@ use Digitonic\DrawHouse\Support\Parse;
  * RESULTED, optionally LIVE_DRAW and back to RESULTED while the draw is
  * revealed live, then COMPLETED. A round can go OPEN → CANCELLED instead.
  *
- * The payload carries no player data. When `toState` is RESULTED, pull
- * winners and tickets from the draw endpoints.
+ * The payload carries no player data. Winners arrive separately, one
+ * `draw.won` event per prize (Partner API v1.4).
  */
 final readonly class RoundStateChangedData
 {

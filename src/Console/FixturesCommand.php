@@ -10,16 +10,21 @@ use Digitonic\DrawHouse\Http\Contracts\RequiresAccessToken;
 use Digitonic\DrawHouse\Http\DrawHouseConnector;
 use Digitonic\DrawHouse\Http\Requests\GetAffiliateReportsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetBalancesRequest;
+use Digitonic\DrawHouse\Http\Requests\GetDailyMetricsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetGamesRequest;
 use Digitonic\DrawHouse\Http\Requests\GetLiveDrawRequest;
 use Digitonic\DrawHouse\Http\Requests\GetLiveDrawsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetMeRequest;
+use Digitonic\DrawHouse\Http\Requests\GetPartnerTicketsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayerRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayersRequest;
 use Digitonic\DrawHouse\Http\Requests\GetReportUtmsRequest;
 use Digitonic\DrawHouse\Http\Requests\GetTicketsRequest;
+use Digitonic\DrawHouse\Http\Requests\GetTransactionsRequest;
 use Digitonic\DrawHouse\Support\PlayersQuery;
 use Digitonic\DrawHouse\Support\ResponseShape;
+use Digitonic\DrawHouse\Support\TicketsQuery;
+use Digitonic\DrawHouse\Support\TransactionsQuery;
 use Illuminate\Console\Command;
 use Saloon\Http\Auth\HeaderAuthenticator;
 use Saloon\Http\Request;
@@ -187,6 +192,10 @@ final class FixturesCommand extends Command
             ? [null, 'players feed unavailable (partner not LIVE?) or empty']
             : [new GetPlayerRequest($playerId), "GET /v2/partners/players/{$playerId}"];
 
+        yield 'partner-tickets' => [new GetPartnerTicketsRequest(TicketsQuery::make()->limit(2)), 'GET /v2/partners/tickets?limit=2'];
+        yield 'transactions' => [new GetTransactionsRequest(TransactionsQuery::make()->limit(2)), 'GET /v2/partners/transactions?limit=2'];
+        yield 'daily-metrics' => [new GetDailyMetricsRequest($yesterday, $yesterday), "GET /v2/partners/metrics/daily?from={$yesterday}&to={$yesterday}"];
+
         if ($affiliateId === null) {
             yield 'games' => [null, 'no affiliateId on the partner profile'];
             yield 'live-draws' => [null, 'no affiliateId on the partner profile'];
@@ -207,7 +216,7 @@ final class FixturesCommand extends Command
 
         yield 'tickets' => $gameId === null
             ? [null, 'no live draw whose tickets could be fetched']
-            : [new GetTicketsRequest($gameId), "GET /v2/games/tickets?gameId={$gameId}"];
+            : [new GetTicketsRequest($gameId, limit: 2), "GET /v2/games/tickets?gameId={$gameId}&limit=2&offset=0"];
     }
 
     private function needsToken(Request $request): bool

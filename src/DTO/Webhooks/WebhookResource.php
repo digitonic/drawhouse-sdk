@@ -12,8 +12,8 @@ use Digitonic\DrawHouse\Support\Parse;
 final readonly class WebhookResource
 {
     /**
-     * @param  string|null  $type  `round`, `player` or `webhook`.
-     * @param  string|null  $id  The round, player or endpoint id. A string on the wire; see intId().
+     * @param  string|null  $type  `round`, `player`, `checkout`, `ticket`, `wallet` or `webhook`.
+     * @param  string|null  $id  The round, player, checkout, raffle ticket, wallet or endpoint id. A string on the wire; see intId().
      * @param  array<string, mixed>  $raw
      */
     public function __construct(

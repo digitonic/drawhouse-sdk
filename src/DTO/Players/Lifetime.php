@@ -20,6 +20,7 @@ final readonly class Lifetime
      * @param  float|null  $refunds  Cash paid back for cancelled rounds or on exclusion.
      * @param  float|null  $cashPrizesWon  Cash prizes paid to the wallet. Site-credit prizes excluded.
      * @param  float|null  $withdrawals  Approved or paid-out withdrawals.
+     * @param  float|null  $netRevenue  `cashSpend − refunds − cashPrizesWon` (Partner API v1.4): what the player is worth in cash. Site credit and withdrawals are not in it.
      * @param  array<string, mixed>  $raw
      */
     public function __construct(
@@ -30,6 +31,7 @@ final readonly class Lifetime
         public ?float $refunds,
         public ?float $cashPrizesWon,
         public ?float $withdrawals,
+        public ?float $netRevenue = null,
         public array $raw = [],
     ) {}
 
@@ -46,6 +48,7 @@ final readonly class Lifetime
             refunds: Parse::float($data['refunds'] ?? null),
             cashPrizesWon: Parse::float($data['cashPrizesWon'] ?? null),
             withdrawals: Parse::float($data['withdrawals'] ?? null),
+            netRevenue: Parse::float($data['netRevenue'] ?? null),
             raw: $data,
         );
     }

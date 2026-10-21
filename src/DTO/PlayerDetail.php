@@ -11,6 +11,7 @@ use Digitonic\DrawHouse\DTO\Players\Attribution;
 use Digitonic\DrawHouse\DTO\Players\Consents;
 use Digitonic\DrawHouse\DTO\Players\Lifetime;
 use Digitonic\DrawHouse\DTO\Players\Suppression;
+use Digitonic\DrawHouse\DTO\Players\WalletBalances;
 use Digitonic\DrawHouse\Enums\AccountStatus;
 use Digitonic\DrawHouse\Support\Parse;
 
@@ -38,6 +39,7 @@ final readonly class PlayerDetail
      * @param  CarbonImmutable|null  $updatedAt  Moves on any change to the player, their consents, status or purchases.
      * @param  CarbonImmutable|null  $statusChangedAt  Moves whenever any input to `accountStatus` changes.
      * @param  Lifetime|null  $lifetime  Only with `include=lifetime` on the list; always on /{id}.
+     * @param  WalletBalances|null  $balances  The player's balances now (Partner API v1.4). Same gate as `lifetime`.
      * @param  array<string, mixed>  $raw
      */
     public function __construct(
@@ -59,6 +61,7 @@ final readonly class PlayerDetail
         public Activity $activity,
         public Consents $consents,
         public ?Lifetime $lifetime,
+        public ?WalletBalances $balances = null,
         public array $raw = [],
     ) {}
 
@@ -88,6 +91,7 @@ final readonly class PlayerDetail
             activity: Activity::fromArray($object($data['activity'] ?? null)),
             consents: Consents::fromArray($object($data['consents'] ?? null)),
             lifetime: is_array($data['lifetime'] ?? null) ? Lifetime::fromArray($data['lifetime']) : null,
+            balances: is_array($data['balances'] ?? null) ? WalletBalances::fromArray($data['balances']) : null,
             raw: $data,
         );
     }

@@ -2,7 +2,23 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
-## 1.2.0 — Unreleased
+## 1.3.0 — Unreleased
+
+Targets version **1.4** of the DrawHouse Partner API (published 21 October 2026). No breaking changes: new constructor parameters on existing DTOs are optional and come before `$raw`.
+
+- **Activity webhook events**: `ticket.purchased`, `instant_win.revealed`, `wallet.credited`, `wallet.debited` and `draw.won` on `WebhookEventType`. They can be subscribed to, and `WebhookEvent` types their payloads as `TicketPurchasedData`, `InstantWinData`, `WalletMovementData` (with `WalletMovementReference`) and `DrawWonData`. Accessors: `ticketPurchased()`, `instantWin()`, `walletMovement()` with `isWalletCredit()`, and `drawWon()`. New enums: `InstantWinPrizeType`, `WalletMovementKind` and `PrizeFulfilment`.
+- **Tickets feed** (`GET /v2/partners/tickets`): `ticketsPage()` and `allTickets()`, with the `TicketsQuery` filter builder. Returns `PartnerTicket` with `TicketAttribution` and `RaffleOutcome`, and the `TicketStatus`, `TicketPaymentStatus`, `TicketType` and `TicketPaymentType` enums.
+- **Per-draw tickets are paged**: `GET /v2/games/tickets` is offset-paged since v1.4. **`tickets()` now follows the pages and returns every ticket; before, it silently returned only the first 1,000.** New `gameTicketsPage()` returns one page (`GameTicketsPage`, with `total`). `tickets()` is deprecated in favour of the feed.
+- **Money feed** (`GET /v2/partners/transactions`, `/v2/partners/players/{id}/transactions`): `transactionsPage()`, `allTransactions()`, `playerTransactionsPage()` and `allPlayerTransactions()`, with the `TransactionsQuery` builder. Returns `MoneyEvent`, with `isSettled()` applying DrawHouse's settled-row rules, and the `MoneyKind` enum.
+- **Daily metrics** (`GET /v2/partners/metrics/daily`): `dailyMetrics()` returns per-day `DailyMetricsRow`s, optionally grouped by source or edition (`MetricsGroupBy`, `MetricsTimezone`).
+- **Players feed**: `Activity::$firstDepositValue`, `Lifetime::$netRevenue` and `PlayerDetail::$balances` (`WalletBalances`: `cash`, `siteCredit`).
+- **Docs**:
+  - `/login` is enveloped since v1.4; `login()` already accepted both shapes.
+  - The webhook retry schedule is documented.
+  - Winners arrive as `draw.won` rather than being pulled.
+- **Fixtures command**: `drawhouse:fixtures` also records the tickets feed, the money feed and daily metrics.
+
+## 1.2.0 — 2026-10-20
 
 - **Laravel 13 apps on Saloon's Laravel plugin v5**: `saloonphp/laravel-plugin` now accepts `^4.0|^5.0`. Nothing in `src/` uses the plugin; it is only needed by the test suite, and by apps that fake requests with `Saloon::fake()`.
 - **`TokenStore::accessTokenExpiry()`**: when the cached access token lapses (the API's expiry less the buffer), or null when none is cached. For health checks and dashboards; it is cleared with the other token keys by `forgetTokens()`.
