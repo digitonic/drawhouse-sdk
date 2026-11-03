@@ -117,6 +117,20 @@ $next = DrawHouse::playersPage($query, after: $page->nextCursor);
 $player = DrawHouse::player(123);
 ```
 
+### Writing consent back
+
+Write the marketing consents you captured on your side (your preference centre, an unsubscribe link, a STOP) onto one of your players. Only the flags you pass are sent; omit one to leave it as it is.
+
+```php
+$player = DrawHouse::setPlayerConsents(123, email: false);            // PATCH /v2/partners/players/123/consents
+DrawHouse::setPlayerConsents($player, sms: false, partnerOffers: true);
+
+$player->consents->email->granted;     // the new state, in the same round trip
+$player->marketable;
+```
+
+DrawHouse treat it as the player toggling the flags themselves: each flag sent stamps its `recordedAt`, `updatedAt` moves, and `player.updated` with `changes: ["consent"]` reaches your webhooks when a value changed. `email: true` also lifts the player's own earlier unsubscribe, but bounce and complaint suppressions stay, and `marketable` still needs KYC and no exclusion. DrawHouse keep no wording version, so keep that in your own ledger. A write is never retried by the SDK; sending the same flags again is harmless, so retry it yourself.
+
 Rate guidance: daily, with `updatedAfter`. Filtered pages are filled server-side, so a short page **is** the end of the data and `nextCursor` is `null` exactly then.
 
 **`TIMED_OUT` is computed at read time.** DrawHouse derive it from `suppression.timedOutUntil` when you read; it clears when that time passes with no status-change event and without `updatedAt` moving, so an `updatedAfter` pull will never tell you it ended, and a cached `accountStatus` is stale as soon as the clock moves. Evaluate it yourself:
