@@ -10,10 +10,13 @@ use Digitonic\DrawHouse\Enums\AcquisitionChannel;
 use Digitonic\DrawHouse\Exceptions\InvalidRequestException;
 use Digitonic\DrawHouse\Exceptions\NotFoundException;
 use Digitonic\DrawHouse\Exceptions\PartnerNotLiveException;
+use Digitonic\DrawHouse\Exceptions\ServerException;
 use Digitonic\DrawHouse\Http\Requests\GetPlayerRequest;
 use Digitonic\DrawHouse\Http\Requests\GetPlayersRequest;
+use Digitonic\DrawHouse\Http\Requests\SetPlayerConsentsRequest;
 use Digitonic\DrawHouse\Support\PlayersQuery;
 use Illuminate\Support\LazyCollection;
+use Saloon\Enums\Method;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\PendingRequest;
 
@@ -322,6 +325,59 @@ it('maps a 404 for a player that is not ours to NotFoundException', function () 
 
     drawhouse()->player(999);
 })->throws(NotFoundException::class);
+
+// ---------------------------------------------------------------------------
+// Consent write-back
+// ---------------------------------------------------------------------------
+
+it('sends only the flags passed with PATCH /v2/partners/players/{id}/consents and returns the player', function () {
+    $mock = MockClient::global([
+        SetPlayerConsentsRequest::class => envelope(playerDetailFixture(123, [
+            'marketable' => false,
+            'consents' => ['email' => ['granted' => false, 'recordedAt' => '2026-11-03T10:00:00Z']],
+        ])),
+    ]);
+
+    $player = drawhouse()->setPlayerConsents(123, email: false);
+
+    expect($player->id)->toBe(123)
+        ->and($player->marketable)->toBeFalse()
+        ->and($player->consents->email->granted)->toBeFalse()
+        ->and($player->consents->email->recordedAt?->toIso8601ZuluString())->toBe('2026-11-03T10:00:00Z');
+
+    $pending = sentPendingRequest($mock, 0);
+    expect($pending->getMethod())->toBe(Method::PATCH)
+        ->and($pending->getUrl())->toBe('https://api.test.raffletown.co.uk/v2/partners/players/123/consents')
+        ->and(sentJsonBody($mock, 0))->toBe(['email' => false]);
+});
+
+it('can set every flag at once, for a Player or PlayerDetail', function () {
+    $mock = MockClient::global([SetPlayerConsentsRequest::class => envelope(playerDetailFixture(123))]);
+
+    drawhouse()->setPlayerConsents(PlayerDetail::fromArray(playerDetailFixture(123)), email: true, sms: false, partnerOffers: true);
+
+    expect(sentJsonBody($mock, 0))->toBe(['email' => true, 'sms' => false, 'partnerOffers' => true]);
+});
+
+it('refuses to send no consent flags', function () {
+    $mock = MockClient::global([]);
+
+    expect(fn () => drawhouse()->setPlayerConsents(123))->toThrow(InvalidArgumentException::class, 'at least one');
+    expect(sentRequests($mock))->toBe([]);
+});
+
+it('maps a 404 on a consent write for a player that is not ours', function () {
+    MockClient::global([SetPlayerConsentsRequest::class => envelopeError(404, 'Not found', 404)]);
+
+    drawhouse()->setPlayerConsents(999, sms: false);
+})->throws(NotFoundException::class);
+
+it('does not retry a consent write that fails with a 500', function () {
+    $mock = MockClient::global([SetPlayerConsentsRequest::class => envelopeError(3, 'Server error', 500)]);
+
+    expect(fn () => drawhouse()->setPlayerConsents(123, email: false))->toThrow(ServerException::class);
+    expect(sentRequests($mock))->toBe([SetPlayerConsentsRequest::class]);
+});
 
 it('maps the 403 partner_not_live on the feed to PartnerNotLiveException', function () {
     MockClient::global([

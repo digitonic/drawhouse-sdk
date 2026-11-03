@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Digitonic\DrawHouse\DTO\Players;
 
 /**
- * `consents` on a players-feed row. Read-only: there is still no write
- * endpoint for consent. No wording version is exposed.
+ * `consents` on a players-feed row. Write them with
+ * DrawHouse::setPlayerConsents(). No wording version is exposed.
  *
  * `partnerOffers.recordedAt` is ALWAYS null; DrawHouse keep no timestamp for
  * that flag.

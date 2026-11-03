@@ -68,6 +68,7 @@ use Digitonic\DrawHouse\Http\Requests\ListWebhooksRequest;
 use Digitonic\DrawHouse\Http\Requests\LoginRequest;
 use Digitonic\DrawHouse\Http\Requests\RefreshAccessTokenRequest;
 use Digitonic\DrawHouse\Http\Requests\RotateWebhookSecretRequest;
+use Digitonic\DrawHouse\Http\Requests\SetPlayerConsentsRequest;
 use Digitonic\DrawHouse\Http\Requests\TestWebhookRequest;
 use Digitonic\DrawHouse\Http\Requests\UpdateWebhookRequest;
 use Digitonic\DrawHouse\Support\Parse;
@@ -319,6 +320,48 @@ final class DrawHouse
         $id = is_int($player) ? $player : (int) $player->id;
 
         $data = $this->send(new GetPlayerRequest($id));
+
+        return PlayerDetail::fromArray(is_array($data) ? $data : []);
+    }
+
+    /**
+     * PATCH /v2/partners/players/{id}/consents — set the marketing consents
+     * you captured on your side (your preference centre, a CRM sync). Only
+     * the flags you pass are sent; at least one is required.
+     *
+     * DrawHouse apply it as if the player had toggled the flags themselves:
+     * each flag sent stamps its `recordedAt` (`partnerOffers` has none), the
+     * player's `updatedAt` moves, and `player.updated` with `changes:
+     * ["consent"]` goes to your webhooks when a value actually changed.
+     * `email: true` also lifts a prior unsubscribe by the player; bounce and
+     * complaint suppressions stay. Only email consent feeds `marketable`.
+     *
+     * Not retried: a 500 is for the caller to retry. Sending the same flags
+     * again is harmless.
+     *
+     * @return PlayerDetail The player after the change, with the new `consents` and `marketable`.
+     *
+     * @throws InvalidArgumentException when no flag is passed
+     * @throws NotFoundException when the player is not yours
+     */
+    public function setPlayerConsents(
+        PlayerDetail|Player|int $player,
+        ?bool $email = null,
+        ?bool $sms = null,
+        ?bool $partnerOffers = null,
+    ): PlayerDetail {
+        $id = is_int($player) ? $player : (int) $player->id;
+
+        $consents = array_filter(
+            ['email' => $email, 'sms' => $sms, 'partnerOffers' => $partnerOffers],
+            static fn (?bool $granted): bool => $granted !== null,
+        );
+
+        if ($consents === []) {
+            throw new InvalidArgumentException('DrawHouse setPlayerConsents: pass at least one of email, sms or partnerOffers');
+        }
+
+        $data = $this->send(new SetPlayerConsentsRequest($id, $consents));
 
         return PlayerDetail::fromArray(is_array($data) ? $data : []);
     }

@@ -2,7 +2,11 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
-## 1.3.0 — Unreleased
+## 1.4.0 — Unreleased
+
+- **Consent write-back** (`PATCH /v2/partners/players/{id}/consents`): `setPlayerConsents()` sets any of `email`, `sms` and `partnerOffers` on one player, sending only the flags passed, and returns the updated `PlayerDetail`. Throws `InvalidArgumentException` when no flag is passed and `NotFoundException` for a player that is not yours. Like the other writes it is never retried automatically.
+
+## 1.3.0 — 2026-10-21
 
 Targets version **1.4** of the DrawHouse Partner API (published 21 October 2026). No breaking changes: new constructor parameters on existing DTOs are optional and come before `$raw`.
 
