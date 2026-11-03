@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Digitonic\DrawHouse\DTO\Webhooks\CheckoutInitiatedData;
 use Digitonic\DrawHouse\DTO\Webhooks\DrawWonData;
 use Digitonic\DrawHouse\DTO\Webhooks\InstantWinData;
 use Digitonic\DrawHouse\DTO\Webhooks\TicketPurchasedData;
@@ -52,6 +53,53 @@ function ticketPurchasedEventFixture(): array
         'attribution' => ['utmSource' => 'joe', 'utmMedium' => 'email', 'utmCampaign' => 'oct-launch'],
     ]);
 }
+
+function checkoutInitiatedEventFixture(): array
+{
+    return activityEventFixture('checkout.initiated', ['type' => 'checkout_intent', 'id' => 'b1c2d3e4-5f60-4a7b-8c9d-0e1f2a3b4c5d'], [
+        'playerId' => 18342,
+        'intentId' => 'b1c2d3e4-5f60-4a7b-8c9d-0e1f2a3b4c5d',
+        'gameId' => 61,
+        'gameName' => 'Weekly Prize Draw',
+        'roundId' => 1180,
+        'editionId' => 5,
+        'quantity' => 3,
+        'amount' => 6,
+        'currency' => 'GBP',
+        'payStepShown' => true,
+    ], id: 3300);
+}
+
+it('parses a checkout.initiated event into a typed checkout opening', function () {
+    $event = WebhookEvent::fromJson(webhookBody(checkoutInitiatedEventFixture()));
+    $checkout = $event->checkoutInitiated();
+
+    expect($event->type)->toBe(WebhookEventType::CHECKOUT_INITIATED)
+        ->and($event->id)->toBe(3300)
+        ->and($event->resource->id)->toBe('b1c2d3e4-5f60-4a7b-8c9d-0e1f2a3b4c5d')
+        ->and($checkout)->toBeInstanceOf(CheckoutInitiatedData::class)
+        ->and($checkout?->playerId)->toBe(18342)
+        ->and($checkout?->intentId)->toBe('b1c2d3e4-5f60-4a7b-8c9d-0e1f2a3b4c5d')
+        ->and($checkout?->gameId)->toBe(61)
+        ->and($checkout?->gameName)->toBe('Weekly Prize Draw')
+        ->and($checkout?->roundId)->toBe(1180)
+        ->and($checkout?->editionId)->toBe(5)
+        ->and($checkout?->quantity)->toBe(3)
+        ->and($checkout?->amount)->toBe(6.0)
+        ->and($checkout?->currency)->toBe('GBP')
+        ->and($checkout?->payStepShown)->toBeTrue()
+        ->and($event->ticketPurchased())->toBeNull();
+});
+
+it('reads a checkout opened on the default site, paid from the wallet', function () {
+    $checkout = CheckoutInitiatedData::fromArray(array_replace(checkoutInitiatedEventFixture()['data'], [
+        'editionId' => null,
+        'payStepShown' => false,
+    ]));
+
+    expect($checkout->editionId)->toBeNull()
+        ->and($checkout->payStepShown)->toBeFalse();
+});
 
 it('parses a ticket.purchased event into one typed checkout', function () {
     $event = WebhookEvent::fromJson(webhookBody(ticketPurchasedEventFixture()));
@@ -182,6 +230,7 @@ it('verifies and parses an activity event in one call', function () {
 
 it('lets an endpoint subscribe to the activity events', function () {
     expect(WebhookEventType::subscribable())->toContain(
+        WebhookEventType::CHECKOUT_INITIATED,
         WebhookEventType::TICKET_PURCHASED,
         WebhookEventType::INSTANT_WIN_REVEALED,
         WebhookEventType::WALLET_CREDITED,

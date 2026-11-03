@@ -10,7 +10,8 @@ namespace Digitonic\DrawHouse\Enums;
  * Every type but `webhook.ping` can be subscribed to on an endpoint
  * (`events`). `webhook.ping` is sent only by
  * POST /v2/partners/webhooks/{id}/test. The activity events (ticket, instant
- * win, wallet and draw win) were added in Partner API v1.4.
+ * win, wallet and draw win) were added in Partner API v1.4, and
+ * `checkout.initiated` after it.
  */
 enum WebhookEventType: string
 {
@@ -22,6 +23,9 @@ enum WebhookEventType: string
 
     /** A player's account status, consent or profile changed. */
     case PLAYER_UPDATED = 'player.updated';
+
+    /** A player opened checkout. There is no matching abandonment event. */
+    case CHECKOUT_INITIATED = 'checkout.initiated';
 
     /** A checkout completed: one event per basket, possibly many tickets. */
     case TICKET_PURCHASED = 'ticket.purchased';

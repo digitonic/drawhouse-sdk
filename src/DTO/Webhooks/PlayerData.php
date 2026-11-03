@@ -22,6 +22,9 @@ use Digitonic\DrawHouse\Support\Parse;
  * CRM. A `profile` change needs the re-fetch. `changes` is empty on
  * `player.registered`.
  *
+ * `exclusion` gives the self-exclusion or time-out in force, and its end,
+ * as one block.
+ *
  * TIMED_OUT expires silently: there is no event when `timedOutUntil`
  * passes, so evaluate it with isTimedOutAt() / effectiveStatusAt() rather
  * than trusting a stored `accountStatus`.
@@ -33,6 +36,7 @@ final readonly class PlayerData
      * @param  bool|null  $marketable  Same rule as the players feed; false means do not contact on any channel.
      * @param  Consents  $consents  As on the players feed; `partnerOffers->recordedAt` is always null.
      * @param  list<PlayerChange>  $changes  Which groups of inputs moved. Empty on `player.registered`.
+     * @param  PlayerExclusion  $exclusion  The self-exclusion or time-out in force. Every field is null on a payload without the block.
      * @param  array<string, mixed>  $raw
      */
     public function __construct(
@@ -44,6 +48,7 @@ final readonly class PlayerData
         public Suppression $suppression,
         public Consents $consents,
         public array $changes = [],
+        public PlayerExclusion $exclusion = new PlayerExclusion(null, null, null, null),
         public array $raw = [],
     ) {}
 
@@ -72,6 +77,7 @@ final readonly class PlayerData
             suppression: Suppression::fromArray($object($data['suppression'] ?? null)),
             consents: Consents::fromArray($object($data['consents'] ?? null)),
             changes: $changes,
+            exclusion: PlayerExclusion::fromArray($object($data['exclusion'] ?? null)),
             raw: $data,
         );
     }
