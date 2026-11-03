@@ -2,7 +2,14 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
-## 1.4.0 — Unreleased
+## 1.5.0 — Unreleased
+
+No breaking changes: the new `PlayerData` parameter is optional and comes before `$raw`.
+
+- **`checkout.initiated` webhook event**: sent when a player opens checkout. `WebhookEventType::CHECKOUT_INITIATED` can be subscribed to, and `WebhookEvent::checkoutInitiated()` returns `CheckoutInitiatedData` (`playerId`, `intentId`, `gameId`, `gameName`, `roundId`, `editionId`, `quantity`, `amount`, `currency`, `payStepShown`). DrawHouse send no abandonment event, and `intentId` does not appear on `ticket.purchased`.
+- **Exclusion on player events**: `PlayerData::$exclusion` reads the new `exclusion` block on `player.registered` and `player.updated` as `PlayerExclusion` (`active`, `kind`, `until`, `forever`), with `isInForceAt()`, `isSelfExclusion()` and `isTimeout()`. New enum `ExclusionKind` (`SELF_EXCLUSION`, `TIMEOUT`). On a payload without the block every field is null.
+
+## 1.4.0 — 2026-11-03
 
 - **Consent write-back** (`PATCH /v2/partners/players/{id}/consents`): `setPlayerConsents()` sets any of `email`, `sms` and `partnerOffers` on one player, sending only the flags passed, and returns the updated `PlayerDetail`. Throws `InvalidArgumentException` when no flag is passed and `NotFoundException` for a player that is not yours. Like the other writes it is never retried automatically.
 

@@ -367,6 +367,7 @@ DrawHouse push events to HTTPS endpoints you register. The SDK covers the statel
 | `round.state_changed` | A round on one of your draws moves into `OPEN`, `RESULTED`, `LIVE_DRAW`, `COMPLETED` or `CANCELLED` (never `SETUP`, `READY`, `VOID`) | `RoundStateChangedData` |
 | `player.registered` | One of your players completes registration | `PlayerData` |
 | `player.updated` | A player's account status, consent or profile changes | `PlayerData` with `changes` |
+| `checkout.initiated` | A player opens checkout. There is no abandonment event (SDK 1.5) | `CheckoutInitiatedData` |
 | `ticket.purchased` | A checkout completes: one event per basket (v1.4) | `TicketPurchasedData` |
 | `instant_win.revealed` | An instant-win prize is revealed (v1.4) | `InstantWinData` |
 | `wallet.credited` / `wallet.debited` | A player's cash wallet moves (v1.4) | `WalletMovementData` |
@@ -451,11 +452,19 @@ if ($round = $event->roundStateChanged()) {          // RoundStateChangedData
 
 if ($player = $event->player()) {                     // PlayerData, for player.registered and player.updated
     $player->playerId; $player->accountStatus; $player->statusChangedAt; $player->marketable;
+    $player->exclusion->kind; ->until; ->forever;     // ExclusionKind SELF_EXCLUSION | TIMEOUT, or null when none is in force
+    $player->exclusion->isInForceAt(now());           // a time-out ending sends no event; evaluate it yourself
     $player->suppression->gamstop; ->selfExcluded; ->timedOutUntil; ->emailSuppressed;   // the players-feed Suppression
     $player->consents->email->granted; ->sms->granted; ->partnerOffers->granted;         // the players-feed Consents
     $player->changes;                                 // list<PlayerChange>: STATUS, CONSENT, PROFILE (empty on registered)
     $player->needsProfileRefetch();                   // PROFILE changed: the event has no PII, call DrawHouse::player($player->playerId)
     $player->effectiveStatusAt(now());                // a time-out ending sends no event; evaluate it yourself
+}
+
+if ($checkout = $event->checkoutInitiated()) {        // CheckoutInitiatedData: a player opened checkout
+    $checkout->playerId; $checkout->intentId; $checkout->gameId; $checkout->roundId; $checkout->editionId;
+    $checkout->quantity; $checkout->amount;           // the basket when checkout opened, GBP
+    $checkout->payStepShown;                          // false when the wallet covered it and no card form showed
 }
 
 if ($purchase = $event->ticketPurchased()) {          // TicketPurchasedData: one checkout
@@ -478,6 +487,7 @@ if ($won = $event->drawWon()) {                       // DrawWonData: one per pr
 }
 ```
 
+- **Abandoned checkouts.** DrawHouse send `checkout.initiated` but no `checkout.abandoned`, and nothing links `intentId` to the `checkoutId` on `ticket.purchased`. To find abandonment, look for no purchase by the same player for the same round within a wait after `occurredAt`, checking the tickets feed as well so a missed `ticket.purchased` does not look like an abandonment. A player may open checkout more than once for one purchase.
 - **Respond fast.** Any `2xx` within 5 seconds counts as delivered; anything else is retried 1 min, 5 min, 30 min, 2 h, 12 h, 24 h and 24 h later, up to 8 attempts, after which the delivery is `DEAD` and only resent if DrawHouse ops requeue it. 50 failures in a row switch the endpoint off. Store the event and process it on a queue, and keep a polling job as a backstop.
 - **Rotating a secret.** Call `rotateWebhookSecret()`, then verify with both the new and the old secret until requests verify with the new one. `verify()` returns the index of the secret that matched (`0` = the first you passed), which tells you when the old one can go.
 - **Timestamp tolerance.** The signature's `t` must be within `tolerance` seconds of now in either direction: 300 (5 minutes) by default, `null` to disable (`DRAWHOUSE_WEBHOOK_TOLERANCE=null` works too). It is checked before the signature.

@@ -18,7 +18,7 @@ use JsonException;
  * - Order on `occurredAt`, not on arrival.
  *
  * `data` is typed by `type`: RoundStateChangedData, PlayerData (registered
- * and updated), TicketPurchasedData, InstantWinData, WalletMovementData
+ * and updated), CheckoutInitiatedData, TicketPurchasedData, InstantWinData, WalletMovementData
  * (credited and debited), DrawWonData or PingData. For a type this SDK does
  * not know yet it is the raw array, and `type` is null (`typeName` keeps the
  * wire value).
@@ -33,7 +33,7 @@ final readonly class WebhookEvent
      * @param  WebhookEventType|null  $type  Null for a type this SDK does not know.
      * @param  string|null  $typeName  `type` as sent.
      * @param  int|null  $affiliateId  Your affiliate id.
-     * @param  RoundStateChangedData|PlayerData|TicketPurchasedData|InstantWinData|WalletMovementData|DrawWonData|PingData|array<string, mixed>  $data
+     * @param  RoundStateChangedData|PlayerData|CheckoutInitiatedData|TicketPurchasedData|InstantWinData|WalletMovementData|DrawWonData|PingData|array<string, mixed>  $data
      * @param  array<string, mixed>  $raw
      */
     public function __construct(
@@ -43,7 +43,7 @@ final readonly class WebhookEvent
         public ?CarbonImmutable $occurredAt,
         public ?int $affiliateId,
         public WebhookResource $resource,
-        public RoundStateChangedData|PlayerData|TicketPurchasedData|InstantWinData|WalletMovementData|DrawWonData|PingData|array $data,
+        public RoundStateChangedData|PlayerData|CheckoutInitiatedData|TicketPurchasedData|InstantWinData|WalletMovementData|DrawWonData|PingData|array $data,
         public array $raw = [],
     ) {}
 
@@ -65,6 +65,7 @@ final readonly class WebhookEvent
             data: match ($type) {
                 WebhookEventType::ROUND_STATE_CHANGED => RoundStateChangedData::fromArray($payload),
                 WebhookEventType::PLAYER_REGISTERED, WebhookEventType::PLAYER_UPDATED => PlayerData::fromArray($payload),
+                WebhookEventType::CHECKOUT_INITIATED => CheckoutInitiatedData::fromArray($payload),
                 WebhookEventType::TICKET_PURCHASED => TicketPurchasedData::fromArray($payload),
                 WebhookEventType::INSTANT_WIN_REVEALED => InstantWinData::fromArray($payload),
                 WebhookEventType::WALLET_CREDITED, WebhookEventType::WALLET_DEBITED => WalletMovementData::fromArray($payload),
@@ -121,6 +122,14 @@ final readonly class WebhookEvent
     public function player(): ?PlayerData
     {
         return $this->data instanceof PlayerData ? $this->data : null;
+    }
+
+    /**
+     * The typed data of a `checkout.initiated` event, else null.
+     */
+    public function checkoutInitiated(): ?CheckoutInitiatedData
+    {
+        return $this->data instanceof CheckoutInitiatedData ? $this->data : null;
     }
 
     /**

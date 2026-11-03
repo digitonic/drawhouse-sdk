@@ -534,6 +534,12 @@ function playerEventFixture(string $type = 'player.updated', array $data = []): 
         'accountStatus' => 'SELF_EXCLUDED',
         'statusChangedAt' => '2026-10-08T09:12:03Z',
         'marketable' => false,
+        'exclusion' => [
+            'active' => true,
+            'kind' => 'SELF_EXCLUSION',
+            'until' => '2027-04-08T09:12:03Z',
+            'forever' => false,
+        ],
         'suppression' => [
             'selfExcluded' => true,
             'selfExclusionUntil' => '2027-04-08T09:12:03Z',

@@ -8,6 +8,7 @@ use Digitonic\DrawHouse\DTO\Webhooks\PlayerData;
 use Digitonic\DrawHouse\DTO\Webhooks\RoundStateChangedData;
 use Digitonic\DrawHouse\DTO\Webhooks\WebhookEvent;
 use Digitonic\DrawHouse\Enums\AccountStatus;
+use Digitonic\DrawHouse\Enums\ExclusionKind;
 use Digitonic\DrawHouse\Enums\PlayerChange;
 use Digitonic\DrawHouse\Enums\RoundState;
 use Digitonic\DrawHouse\Enums\WebhookEventType;
@@ -280,6 +281,43 @@ it('parses player.updated with the existing Suppression, Consents and AccountSta
         ->and($player?->consents->sms->isGranted())->toBeFalse()
         ->and($player?->consents->partnerOffers->isGranted())->toBeTrue()
         ->and($player?->consents->partnerOffers->recordedAt)->toBeNull();
+});
+
+it('parses the exclusion block on a player event', function () {
+    $selfExcluded = PlayerData::fromArray(playerEventFixture()['data']);
+    $forever = PlayerData::fromArray(playerEventFixture('player.updated', [
+        'exclusion' => ['kind' => 'SELF_EXCLUSION', 'until' => null, 'forever' => true],
+    ])['data']);
+    $timeout = PlayerData::fromArray(playerEventFixture('player.updated', [
+        'exclusion' => ['kind' => 'TIMEOUT', 'until' => '2026-11-09T09:12:03Z'],
+    ])['data']);
+    $none = PlayerData::fromArray(playerEventFixture('player.updated', [
+        'exclusion' => ['active' => false, 'kind' => null, 'until' => null],
+    ])['data']);
+
+    expect($selfExcluded->exclusion->active)->toBeTrue()
+        ->and($selfExcluded->exclusion->kind)->toBe(ExclusionKind::SELF_EXCLUSION)
+        ->and($selfExcluded->exclusion->isSelfExclusion())->toBeTrue()
+        ->and($selfExcluded->exclusion->until?->toIso8601ZuluString())->toBe('2027-04-08T09:12:03Z')
+        ->and($selfExcluded->exclusion->forever)->toBeFalse()
+        ->and($selfExcluded->exclusion->isInForceAt(CarbonImmutable::parse('2027-04-08T09:12:04Z')))->toBeFalse()
+        ->and($forever->exclusion->isInForceAt(CarbonImmutable::parse('2099-01-01T00:00:00Z')))->toBeTrue()
+        ->and($timeout->exclusion->isTimeout())->toBeTrue()
+        ->and($timeout->exclusion->isInForceAt(CarbonImmutable::parse('2026-11-09T09:12:02Z')))->toBeTrue()
+        ->and($timeout->exclusion->isInForceAt(CarbonImmutable::parse('2026-11-09T09:12:03Z')))->toBeFalse()
+        ->and($none->exclusion->kind)->toBeNull()
+        ->and($none->exclusion->isInForceAt(CarbonImmutable::parse('2026-11-09T09:12:02Z')))->toBeFalse();
+});
+
+it('reads a player event without the exclusion block as unknown', function () {
+    $data = playerEventFixture()['data'];
+    unset($data['exclusion']);
+
+    $exclusion = PlayerData::fromArray($data)->exclusion;
+
+    expect($exclusion->active)->toBeNull()
+        ->and($exclusion->kind)->toBeNull()
+        ->and($exclusion->isInForceAt(CarbonImmutable::parse('2026-11-09T09:12:02Z')))->toBeFalse();
 });
 
 it('parses player.registered with no changes, and flags a profile change for a re-fetch', function () {
