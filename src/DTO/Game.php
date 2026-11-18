@@ -72,8 +72,10 @@ final readonly class Game
 
     /**
      * What the winner of this prize may take in cash instead, at this game's
-     * `physicalToCashPercentage`. Whole pounds; null when the prize is not
-     * physical or the game offers no cash. See CashAlternative.
+     * `physicalToCashPercentage`. Whole pounds; null for an instant prize, a
+     * category DrawHouse offers none on, or a game that offers no cash. Pass
+     * the live feed's prize (LivePrize) where you have it: it carries your
+     * edition's category. See CashAlternative.
      */
     public function cashAlternative(Prize|LivePrize $prize): ?float
     {

@@ -234,17 +234,28 @@ HTTP 500 / `errorCode 3` on this endpoint is documented as transient and is retr
 
 ### Cash alternatives
 
-DrawHouse states no cash figure per prize. Each game carries `fields->physicalToCashPercentage` (omitted when cash-for-physical is not offered), and the cash a winner may take instead is that share of the prize's value, **rounded down to whole pounds**. £230 AirPods at 73% is £167.
+DrawHouse states no cash figure per prize. Each game carries `fields->physicalToCashPercentage`, and the SDK works the cash alternative out **exactly as DrawHouse's own prize-draw pages do** (`resolveDrawCashAlternative` in their front end):
+
+- **Only the draw's main prize**, its first prize of type `DRAW`. Instant prizes have none, so an instant-win-only draw has none.
+- **Only `PHYSICAL`, `PHYSICAL_NO_VAT`, `VOUCHER` and `VOUCHER_VAT`.** Cash and site credit have none, whatever the percentage. "Win £150 Cash!" carries 100% and shows nothing.
+- **The edition's category, where the brand overrode the base game's.** PrizeJoe's Ray-Ban glasses are "£390 Cash" (`CASH`) on the base game, but `PHYSICAL` on its edition. The **live feed's** prizes carry the edition's category, and the games catalogue's do not, so use `LivePrize` / `LiveDraw` where you can.
+- **The percentage of the value to the penny, rounded down to whole pounds.** Any percentage above 0 counts.
 
 ```php
-$game->cashAlternative($prize);                  // Prize or LivePrize, at the game's own percentage
-$prize->cashAlternative(73.0);                   // or pass a percentage you hold
+$draw->cashAlternative($game->fields->physicalToCashPercentage);   // LiveDraw: its first DRAW prize (the live feed carries no percentage)
+$game->cashAlternative($prize);                  // a Prize or LivePrize, at the game's own percentage
+$prize->cashAlternative(73.0);                   // null for an INSTANT prize
 CashAlternative::for(230.0, 'PHYSICAL', 73.0);   // 167.0 (Digitonic\DrawHouse\Support\CashAlternative)
+CashAlternative::forDraw($prizes, 73.0);         // the first DRAW prize of a list
 ```
 
-Only prizes whose category starts with `PHYSICAL` have one; that includes DrawHouse's `PHYSICAL_NO_VAT`, read from the raw category because `PrizeCategory` does not know it. Vouchers, cash and site credit, a missing or out-of-range percentage (above 0, at most 100) and a missing value all give null.
-
-This is the PrizeJoe storefront's rule (`App\Catalogue\Prize::fromPlatform()`), so every surface shows the same figure. A brand's own wording can differ: "Win an Apple Watch Series 12 (or £275 cash alternative)!" is £380 at 73%, which this rule gives as £277.
+On PrizeJoe's draws this gives exactly what their pages show:
+- AirPods £230 → £167
+- Ray-Ban £390 → £284
+- Charlotte Tilbury £180 → £131
+- Airbnb voucher £100 at 80% → £80
+- Supermarket voucher £50 → £40
+- Nothing for the cash draws or the instant wins
 
 ### Live draws (widgets)
 
