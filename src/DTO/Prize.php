@@ -6,6 +6,7 @@ namespace Digitonic\DrawHouse\DTO;
 
 use Digitonic\DrawHouse\Enums\PrizeCategory;
 use Digitonic\DrawHouse\Enums\PrizeType;
+use Digitonic\DrawHouse\Support\CashAlternative;
 use Digitonic\DrawHouse\Support\Parse;
 
 /**
@@ -54,5 +55,20 @@ final readonly class Prize
         }
 
         return max(0, $this->totalAvailable - $this->soldCount);
+    }
+
+    /**
+     * What the winner may take in cash instead, given the game's
+     * `physicalToCashPercentage` (`$game->fields->physicalToCashPercentage`,
+     * or `Game::cashAlternative()`). Whole pounds; null for a prize that is
+     * not physical or a game that offers no cash. See CashAlternative.
+     */
+    public function cashAlternative(?float $physicalToCashPercentage): ?float
+    {
+        return CashAlternative::for(
+            $this->amount,
+            Parse::string($this->raw['category'] ?? null) ?? $this->category?->value,
+            $physicalToCashPercentage,
+        );
     }
 }

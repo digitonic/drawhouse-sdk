@@ -6,6 +6,7 @@ namespace Digitonic\DrawHouse\DTO\LiveDraws;
 
 use Digitonic\DrawHouse\Enums\PrizeCategory;
 use Digitonic\DrawHouse\Enums\PrizeType;
+use Digitonic\DrawHouse\Support\CashAlternative;
 use Digitonic\DrawHouse\Support\Parse;
 
 /**
@@ -55,5 +56,20 @@ final readonly class LivePrize
     public function isInstant(): bool
     {
         return $this->type?->isInstant() ?? false;
+    }
+
+    /**
+     * What the winner may take in cash instead, given the game's
+     * `physicalToCashPercentage` (from the game: the live feed does not carry it,
+     * so read it from `games()`, or use `Game::cashAlternative()`). Whole pounds; null for a prize that is
+     * not physical or a game that offers no cash. See CashAlternative.
+     */
+    public function cashAlternative(?float $physicalToCashPercentage): ?float
+    {
+        return CashAlternative::for(
+            $this->amount,
+            Parse::string($this->raw['category'] ?? null) ?? $this->category?->value,
+            $physicalToCashPercentage,
+        );
     }
 }

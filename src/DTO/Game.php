@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Digitonic\DrawHouse\DTO;
 
+use Digitonic\DrawHouse\DTO\LiveDraws\LivePrize;
 use Digitonic\DrawHouse\Enums\GameState;
 use Digitonic\DrawHouse\Support\Parse;
 
@@ -67,6 +68,16 @@ final readonly class Game
         }
 
         return null;
+    }
+
+    /**
+     * What the winner of this prize may take in cash instead, at this game's
+     * `physicalToCashPercentage`. Whole pounds; null when the prize is not
+     * physical or the game offers no cash. See CashAlternative.
+     */
+    public function cashAlternative(Prize|LivePrize $prize): ?float
+    {
+        return $prize->cashAlternative($this->fields->physicalToCashPercentage);
     }
 
     /**
