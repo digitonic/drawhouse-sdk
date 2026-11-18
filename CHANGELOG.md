@@ -2,21 +2,21 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
-## 1.6.1 — Unreleased
+## 1.6.1 — 2026-11-18
 
-Fixes the cash-alternative rule from 1.6.0 to match DrawHouse's own prize-draw pages (`resolveDrawCashAlternative` in their front end), so every surface shows what the brand's site does. ENG-1108.
+Fixes the cash-alternative rule from 1.6.0 to match DrawHouse's own prize-draw pages (`resolveDrawCashAlternative` in their front end), so a partner shows the same figure as the brand's site.
 
 - **Main draw prize only:** `Prize::cashAlternative()` and `LivePrize::cashAlternative()` now return null for an instant prize. 1.6.0 gave instant-win cars a cash alternative that DrawHouse never shows.
-- **Vouchers count:** the categories are `PHYSICAL`, `PHYSICAL_NO_VAT`, `VOUCHER` and `VOUCHER_VAT` (`CashAlternative::CATEGORIES`). 1.6.0 left vouchers out, though DrawHouse shows them ("£100 Airbnb voucher (or £80 cash alternative)").
+- **Vouchers count:** the categories are `PHYSICAL`, `PHYSICAL_NO_VAT`, `VOUCHER` and `VOUCHER_VAT` (`CashAlternative::CATEGORIES`). 1.6.0 left vouchers out, though DrawHouse shows them (a £100 voucher at 80% shows "£80 cash alternative").
 - **Any percentage above 0** counts. 1.6.0 also refused anything over 100, which DrawHouse does not.
 - **Rounding:** to the penny first, then down to whole pounds, as DrawHouse does.
-- **New `LiveDraw::cashAlternative($percentage)` and `CashAlternative::forDraw($prizes, $percentage)`:** the first `DRAW` prize's figure, as DrawHouse picks it. Prefer the live feed's prizes: they carry the brand edition's category (PrizeJoe's Ray-Ban glasses are `CASH` on the base game and `PHYSICAL` on its edition).
+- **New `LiveDraw::cashAlternative($percentage)` and `CashAlternative::forDraw($prizes, $percentage)`:** the first `DRAW` prize's figure, as DrawHouse picks it. Prefer the live feed's prizes: they carry the brand edition's category, which can differ from the base game's (a prize the base game lists as `CASH` that an edition overrides as `PHYSICAL`).
 
 ## 1.6.0 — 2026-11-18
 
 No breaking changes.
 
-- **Cash alternatives** (ENG-1108): `Prize::cashAlternative()` and `LivePrize::cashAlternative()` take the game's `physicalToCashPercentage`, and `Game::cashAlternative($prize)` applies the game's own. The rule lives in `Support\CashAlternative::for()` and matches the PrizeJoe storefront's: the percentage of the prize's value, rounded down to whole pounds, for categories starting with `PHYSICAL` (including `PHYSICAL_NO_VAT`, read from the raw category); null for vouchers, cash, site credit, a missing value or a percentage outside 0–100. DrawHouse states no per-prize figure.
+- **Cash alternatives**: `Prize::cashAlternative()` and `LivePrize::cashAlternative()` take the game's `physicalToCashPercentage`, and `Game::cashAlternative($prize)` applies the game's own. The rule lives in `Support\CashAlternative::for()`: the percentage of the prize's value, rounded down to whole pounds, for categories starting with `PHYSICAL` (including `PHYSICAL_NO_VAT`, read from the raw category); null for vouchers, cash, site credit, a missing value or a percentage outside 0–100. DrawHouse states no per-prize figure.
 
 ## 1.5.0 — 2026-11-03
 
