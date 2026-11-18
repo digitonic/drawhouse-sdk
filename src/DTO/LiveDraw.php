@@ -14,6 +14,7 @@ use Digitonic\DrawHouse\DTO\LiveDraws\LivePrize;
 use Digitonic\DrawHouse\DTO\LiveDraws\TicketCounts;
 use Digitonic\DrawHouse\Enums\RaffleEntryType;
 use Digitonic\DrawHouse\Enums\RoundState;
+use Digitonic\DrawHouse\Support\CashAlternative;
 use Digitonic\DrawHouse\Support\Parse;
 
 /**
@@ -144,6 +145,18 @@ final readonly class LiveDraw
     public function image(string $surface, ?string $variant = null): ?string
     {
         return ($this->images[$surface] ?? null)?->url($variant);
+    }
+
+    /**
+     * What this draw's winner may take in cash instead, as DrawHouse's own
+     * prize-draw pages show it: the first DRAW prize's, at the game's
+     * `physicalToCashPercentage` (from `games()`: the live feed does not
+     * carry it). Whole pounds; null for an instant-win-only draw or a prize
+     * DrawHouse offers no cash on. See CashAlternative.
+     */
+    public function cashAlternative(?float $physicalToCashPercentage): ?float
+    {
+        return CashAlternative::forDraw($this->prizes, $physicalToCashPercentage);
     }
 
     /**

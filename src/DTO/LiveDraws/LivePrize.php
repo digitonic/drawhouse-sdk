@@ -60,12 +60,18 @@ final readonly class LivePrize
 
     /**
      * What the winner may take in cash instead, given the game's
-     * `physicalToCashPercentage` (from the game: the live feed does not carry it,
-     * so read it from `games()`, or use `Game::cashAlternative()`). Whole pounds; null for a prize that is
-     * not physical or a game that offers no cash. See CashAlternative.
+     * `physicalToCashPercentage` (the live feed does not carry it: read it
+     * from `games()`, or use `Game::cashAlternative()`). Whole pounds; null
+     * for an instant prize, a category DrawHouse offers none on, or a game
+     * that offers no cash. The category is your edition's, as DrawHouse's
+     * own pages use it. See CashAlternative.
      */
     public function cashAlternative(?float $physicalToCashPercentage): ?float
     {
+        if ($this->type !== PrizeType::DRAW) {
+            return null;
+        }
+
         return CashAlternative::for(
             $this->amount,
             Parse::string($this->raw['category'] ?? null) ?? $this->category?->value,
