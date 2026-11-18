@@ -237,8 +237,8 @@ HTTP 500 / `errorCode 3` on this endpoint is documented as transient and is retr
 DrawHouse states no cash figure per prize. Each game carries `fields->physicalToCashPercentage`, and the SDK works the cash alternative out **exactly as DrawHouse's own prize-draw pages do** (`resolveDrawCashAlternative` in their front end):
 
 - **Only the draw's main prize**, its first prize of type `DRAW`. Instant prizes have none, so an instant-win-only draw has none.
-- **Only `PHYSICAL`, `PHYSICAL_NO_VAT`, `VOUCHER` and `VOUCHER_VAT`.** Cash and site credit have none, whatever the percentage. "Win £150 Cash!" carries 100% and shows nothing.
-- **The edition's category, where the brand overrode the base game's.** PrizeJoe's Ray-Ban glasses are "£390 Cash" (`CASH`) on the base game, but `PHYSICAL` on its edition. The **live feed's** prizes carry the edition's category, and the games catalogue's do not, so use `LivePrize` / `LiveDraw` where you can.
+- **Only `PHYSICAL`, `PHYSICAL_NO_VAT`, `VOUCHER` and `VOUCHER_VAT`.** Cash and site credit have none, whatever the percentage: a £150 cash prize at 100% shows nothing.
+- **The edition's category, where the brand overrode the base game's.** A prize can be `CASH` on the base game and `PHYSICAL` on a brand's edition. The **live feed's** prizes carry the edition's category, and the games catalogue's do not, so use `LivePrize` / `LiveDraw` where you can.
 - **The percentage of the value to the penny, rounded down to whole pounds.** Any percentage above 0 counts.
 
 ```php
@@ -249,13 +249,11 @@ CashAlternative::for(230.0, 'PHYSICAL', 73.0);   // 167.0 (Digitonic\DrawHouse\S
 CashAlternative::forDraw($prizes, 73.0);         // the first DRAW prize of a list
 ```
 
-On PrizeJoe's draws this gives exactly what their pages show:
-- AirPods £230 → £167
-- Ray-Ban £390 → £284
-- Charlotte Tilbury £180 → £131
-- Airbnb voucher £100 at 80% → £80
-- Supermarket voucher £50 → £40
-- Nothing for the cash draws or the instant wins
+For example:
+- A £230 physical main prize at 73% → £167
+- A £100 voucher at 80% → £80
+- A £5,385.30 physical prize at 73% → £3,931.27 → £3,931
+- Nothing for a cash prize, or for any instant prize
 
 ### Live draws (widgets)
 

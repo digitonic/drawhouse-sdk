@@ -63,7 +63,7 @@ final readonly class Prize
      * or `Game::cashAlternative()`). Whole pounds; null for an instant prize,
      * a category DrawHouse offers none on, or a game that offers no cash. See
      * CashAlternative. This is the base game's category: a brand edition's
-     * override (glasses listed as "£390 Cash") is only on the live feed's
+     * override (a prize the base game lists as CASH) is only on the live feed's
      * prizes (LivePrize).
      */
     public function cashAlternative(?float $physicalToCashPercentage): ?float
