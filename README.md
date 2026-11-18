@@ -222,6 +222,7 @@ foreach (DrawHouse::allGames(Participation::JOINED) as $game) {
     $round?->prizes[0]->type;              // PrizeType: DRAW | INSTANT   (v1.0's INSTANT_* still parse, deprecated)
     $round?->prizes[0]->category;          // PrizeCategory: PHYSICAL | CASH | SITE_CREDIT | VOUCHER
     $round?->prizes[0]->soldCount;         // and ->totalAvailable, ->remaining(), ->amount
+    $game->cashAlternative($round?->prizes[0]);   // ?float whole pounds: the cash a winner may take instead (see below)
 
     $game->raw;                            // everything DrawHouse sent, untouched
 }
@@ -230,6 +231,20 @@ foreach (DrawHouse::allGames(Participation::JOINED) as $game) {
 Paging is applied **before** the participation filter, so a page shorter than `limit` is not the last page. `allGames()` keeps going until a page comes back empty. Default states are `READY, INPROGRESS, REPORTED, RESULTED, COMPLETED`; `SETUP, ARCHIVED, DELETED, CANCELLED` are returned only when passed explicitly.
 
 HTTP 500 / `errorCode 3` on this endpoint is documented as transient and is retried once automatically. HTTP 400 / `errorCode 7` is a bad query parameter and is not retried.
+
+### Cash alternatives
+
+DrawHouse states no cash figure per prize. Each game carries `fields->physicalToCashPercentage` (omitted when cash-for-physical is not offered), and the cash a winner may take instead is that share of the prize's value, **rounded down to whole pounds**. £230 AirPods at 73% is £167.
+
+```php
+$game->cashAlternative($prize);                  // Prize or LivePrize, at the game's own percentage
+$prize->cashAlternative(73.0);                   // or pass a percentage you hold
+CashAlternative::for(230.0, 'PHYSICAL', 73.0);   // 167.0 (Digitonic\DrawHouse\Support\CashAlternative)
+```
+
+Only prizes whose category starts with `PHYSICAL` have one; that includes DrawHouse's `PHYSICAL_NO_VAT`, read from the raw category because `PrizeCategory` does not know it. Vouchers, cash and site credit, a missing or out-of-range percentage (above 0, at most 100) and a missing value all give null.
+
+This is the PrizeJoe storefront's rule (`App\Catalogue\Prize::fromPlatform()`), so every surface shows the same figure. A brand's own wording can differ: "Win an Apple Watch Series 12 (or £275 cash alternative)!" is £380 at 73%, which this rule gives as £277.
 
 ### Live draws (widgets)
 
@@ -253,6 +268,7 @@ $draw->tickets->max; ->sold; ->available; ->maxPerPlayer;   // ints, exact; "tic
 $draw->schedule->opensAt; ->drawAt; ->liveDrawAt; ->completesAt;
 $draw->nextTransition?->scheduledAt;
 $draw->prizes[0]->name; ->type; ->category; ->amount; ->imageUrl; ->totalAvailable; ->displayOrder;   // your edition's names/images applied
+$draw->prizes[0]->cashAlternative($game->fields->physicalToCashPercentage);   // ?float; the live feed carries no percentage, so take it from the game
 $draw->instantWins?->remaining; ->totalPrizes; ->revealed; ->claimed; ->totalValue; ->perPrize[0]->remaining;   // null when the round has none
 $draw->liveDraw?->state; ->armed; ->drawTime; ->revealed; ->revealedAt;   // null until the round is resulted
 $draw->asOf;                                                // when the snapshot was built; up to 15s old
