@@ -2,12 +2,17 @@
 
 All notable changes to `digitonic/drawhouse-sdk`. Versions follow [semver](https://semver.org).
 
-## 1.5.0 — Unreleased
+## 1.6.0 — 2026-11-18
+
+No breaking changes.
+
+- **Cash alternatives** (ENG-1108): `Prize::cashAlternative()` and `LivePrize::cashAlternative()` take the game's `physicalToCashPercentage`, and `Game::cashAlternative($prize)` applies the game's own. The rule lives in `Support\CashAlternative::for()` and matches the PrizeJoe storefront's: the percentage of the prize's value, rounded down to whole pounds, for categories starting with `PHYSICAL` (including `PHYSICAL_NO_VAT`, read from the raw category); null for vouchers, cash, site credit, a missing value or a percentage outside 0–100. DrawHouse states no per-prize figure.
+
+## 1.5.0 — 2026-11-03
 
 No breaking changes: the new `PlayerData` parameter is optional and comes before `$raw`.
 
 - **`checkout.initiated` webhook event**: sent when a player opens checkout. `WebhookEventType::CHECKOUT_INITIATED` can be subscribed to, and `WebhookEvent::checkoutInitiated()` returns `CheckoutInitiatedData` (`playerId`, `intentId`, `gameId`, `gameName`, `roundId`, `editionId`, `quantity`, `amount`, `currency`, `payStepShown`). DrawHouse send no abandonment event, and `intentId` does not appear on `ticket.purchased`.
-- **Cash alternatives** (ENG-1108): `Prize::cashAlternative()` and `LivePrize::cashAlternative()` take the game's `physicalToCashPercentage`, and `Game::cashAlternative($prize)` applies the game's own. The rule lives in `Support\CashAlternative::for()` and matches the PrizeJoe storefront's: the percentage of the prize's value, rounded down to whole pounds, for categories starting with `PHYSICAL` (including `PHYSICAL_NO_VAT`, read from the raw category); null for vouchers, cash, site credit, a missing value or a percentage outside 0–100. DrawHouse states no per-prize figure.
 - **Exclusion on player events**: `PlayerData::$exclusion` reads the new `exclusion` block on `player.registered` and `player.updated` as `PlayerExclusion` (`active`, `kind`, `until`, `forever`), with `isInForceAt()`, `isSelfExclusion()` and `isTimeout()`. New enum `ExclusionKind` (`SELF_EXCLUSION`, `TIMEOUT`). On a payload without the block every field is null.
 
 ## 1.4.0 — 2026-11-03
